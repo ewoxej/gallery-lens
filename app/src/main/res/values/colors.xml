@@ -1,0 +1,4 @@
+<resources>
+    <!-- Launcher icon background (the SVG's tile colour). -->
+    <color name="ic_launcher_background">#62556C</color>
+</resources>

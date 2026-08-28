@@ -1,0 +1,38 @@
+<resources>
+    <string name="app_name">Gallery Lens</string>
+
+    <!-- Search -->
+    <string name="search_placeholder">Search text in photos</string>
+    <string name="action_settings">Settings</string>
+    <string name="indexing_progress">Indexing: %1$d of %2$d</string>
+    <string name="gallery_empty">Gallery is empty or still indexing</string>
+    <string name="no_results">Nothing found</string>
+
+    <!-- Photo viewer -->
+    <string name="action_show_text">Show text</string>
+    <string name="text_on_photo">Text on photo</string>
+    <string name="action_copy_all">Copy all text</string>
+    <string name="line_copied">Line copied</string>
+    <string name="text_copied">Text copied</string>
+
+    <!-- Permission -->
+    <string name="permission_rationale">Gallery Lens recognises the text in your photos so you can search by it. It needs access to your gallery for that.</string>
+    <string name="permission_grant">Allow access to photos</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="action_back">Back</string>
+    <string name="stats_title">Statistics</string>
+    <string name="stat_total">Total photos</string>
+    <string name="stat_with_text">With recognised text</string>
+    <string name="stat_no_text">No text</string>
+    <string name="stat_queued">Queued</string>
+    <string name="stat_errors">Errors</string>
+    <string name="indexing_title">Indexing</string>
+    <string name="reindex_action">Re-index all photos</string>
+    <string name="reindex_desc">Clears the recognised text and re-runs OCR over the whole gallery. Handy after changing languages or updating the engine.</string>
+    <string name="reindex_confirm_title">Re-index?</string>
+    <string name="reindex_confirm_message">The text on %1$d photos will be recognised again. This may take a while.</string>
+    <string name="reindex_confirm_yes">Re-index</string>
+    <string name="cancel">Cancel</string>
+</resources>

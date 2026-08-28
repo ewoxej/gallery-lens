@@ -1,0 +1,38 @@
+<resources>
+    <!-- app_name falls back to the default "Gallery Lens" (proper noun). -->
+
+    <!-- Search -->
+    <string name="search_placeholder">Поиск по тексту на фото</string>
+    <string name="action_settings">Настройки</string>
+    <string name="indexing_progress">Индексация: %1$d из %2$d</string>
+    <string name="gallery_empty">Галерея пуста или ещё индексируется</string>
+    <string name="no_results">Ничего не найдено</string>
+
+    <!-- Photo viewer -->
+    <string name="action_show_text">Показать текст</string>
+    <string name="text_on_photo">Текст на фото</string>
+    <string name="action_copy_all">Копировать весь текст</string>
+    <string name="line_copied">Строка скопирована</string>
+    <string name="text_copied">Текст скопирован</string>
+
+    <!-- Permission -->
+    <string name="permission_rationale">Gallery Lens распознаёт текст на ваших фото и позволяет искать по нему. Для этого нужен доступ к галерее.</string>
+    <string name="permission_grant">Разрешить доступ к фото</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Настройки</string>
+    <string name="action_back">Назад</string>
+    <string name="stats_title">Статистика</string>
+    <string name="stat_total">Всего фото</string>
+    <string name="stat_with_text">С распознанным текстом</string>
+    <string name="stat_no_text">Без текста</string>
+    <string name="stat_queued">В очереди</string>
+    <string name="stat_errors">Ошибки</string>
+    <string name="indexing_title">Индексация</string>
+    <string name="reindex_action">Переиндексировать все фото</string>
+    <string name="reindex_desc">Сбросит распознанный текст и заново прогонит OCR по всей галерее. Полезно после смены языков или обновления движка.</string>
+    <string name="reindex_confirm_title">Переиндексировать?</string>
+    <string name="reindex_confirm_message">Будет заново распознан текст на %1$d фото. Это может занять время.</string>
+    <string name="reindex_confirm_yes">Переиндексировать</string>
+    <string name="cancel">Отмена</string>
+</resources>
