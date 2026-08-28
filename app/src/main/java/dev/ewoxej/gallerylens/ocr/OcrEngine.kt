@@ -31,7 +31,7 @@ class OcrEngine(private val context: Context) {
         tess?.let { return it }
         val dataDir = Tessdata.ensureInstalled(context) ?: return null
         val api = TessBaseAPI()
-        return if (api.init(dataDir.absolutePath, "rus+eng")) {
+        return if (api.init(dataDir.absolutePath, "rus+ukr+eng")) {
             api.pageSegMode = TessBaseAPI.PageSegMode.PSM_AUTO
             tess = api
             api
@@ -77,7 +77,9 @@ class OcrEngine(private val context: Context) {
     private fun preferTess(latinText: String, tessText: String): Boolean {
         if (tessText.isEmpty()) return false
         if (latinText.isEmpty()) return true
-        val cyr = tessText.count { it in 'а'..'я' || it in 'А'..'Я' || it == 'ё' || it == 'Ё' }
+        // Whole Cyrillic block (U+0400–U+04FF) so Ukrainian-only letters
+        // (і ї є ґ) count too, not just the Russian а–я range.
+        val cyr = tessText.count { it in 'Ѐ'..'ӿ' }
         val lat = latinText.count { it.isLetter() }
         return cyr >= 2 && cyr >= lat / 3
     }
@@ -143,7 +145,7 @@ class OcrEngine(private val context: Context) {
 }
 
 object Tessdata {
-    private val LANGS = listOf("eng", "rus")
+    private val LANGS = listOf("eng", "rus", "ukr")
 
     fun ensureInstalled(context: Context): File? {
         val base = File(context.filesDir, "tess")

@@ -27,7 +27,14 @@ data class PhotoEntity(
     val indexedAtMs: Long? = null,
 )
 
-@Fts4(tokenizer = FtsOptions.TOKENIZER_UNICODE61)
+// unicode61 case-folds Cyrillic (the default `simple` tokenizer folds ASCII
+// only). remove_diacritics=1 strips accents on BOTH the indexed text and the
+// MATCH query, so search is diacritic-insensitive: "orult" finds "őrült/örült",
+// "fuszer" finds "fűszer". (=1 not =2: =2 needs SQLite 3.27+, above our minSdk.)
+@Fts4(
+    tokenizer = FtsOptions.TOKENIZER_UNICODE61,
+    tokenizerArgs = ["remove_diacritics=1"],
+)
 @Entity(tableName = "photo_fts")
 data class PhotoFts(
     @PrimaryKey val rowid: Long,

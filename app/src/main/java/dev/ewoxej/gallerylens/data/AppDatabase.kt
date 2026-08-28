@@ -16,7 +16,8 @@ class Converters {
 
 @Database(
     entities = [PhotoEntity::class, PhotoFts::class],
-    version = 2,
+    // v3: FTS tokenizer gained remove_diacritics=1 (diacritic-insensitive search).
+    version = 3,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
