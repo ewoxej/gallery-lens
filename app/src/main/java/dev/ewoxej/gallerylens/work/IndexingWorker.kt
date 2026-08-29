@@ -23,32 +23,36 @@ class IndexingWorker(context: Context, params: WorkerParameters) :
         runCatching { MediaScanner(applicationContext, dao).scan() }
             .onFailure { Log.w(TAG, "scan failed", it) }
 
-        val batch = dao.nextPending(BATCH)
-        if (batch.isEmpty()) return Result.success()
-
         val ocr = OcrEngine(applicationContext)
         try {
-            for (photo in batch) {
-                if (isStopped) break
-                val result = ocr.recognize(Uri.parse(photo.uri))
-                if (result == null) {
-                    dao.setStatus(photo.id, PhotoStatus.FAILED, null, System.currentTimeMillis())
-                } else {
-                    dao.applyOcrResult(
-                        id = photo.id,
-                        text = result.text,
-                        blocksJson = OcrLayout.toJson(result.blocks),
-                        w = result.width,
-                        h = result.height,
-                        atMs = System.currentTimeMillis(),
-                    )
+            // Drain the whole pending backlog in this single run, one batch at a
+            // time. (Self-enqueuing the next batch would be a no-op: the unique
+            // work is still "running" here, so ExistingWorkPolicy.KEEP ignores
+            // it and photos past the first batch would strand until an external
+            // trigger.) isStopped keeps it cancellable between photos.
+            while (!isStopped) {
+                val batch = dao.nextPending(BATCH)
+                if (batch.isEmpty()) break
+                for (photo in batch) {
+                    if (isStopped) break
+                    val result = ocr.recognize(Uri.parse(photo.uri))
+                    if (result == null) {
+                        dao.setStatus(photo.id, PhotoStatus.FAILED, null, System.currentTimeMillis())
+                    } else {
+                        dao.applyOcrResult(
+                            id = photo.id,
+                            text = result.text,
+                            blocksJson = OcrLayout.toJson(result.blocks),
+                            w = result.width,
+                            h = result.height,
+                            atMs = System.currentTimeMillis(),
+                        )
+                    }
                 }
             }
         } finally {
             ocr.close()
         }
-
-        if (dao.nextPending(1).isNotEmpty()) enqueue(applicationContext)
         return Result.success()
     }
 

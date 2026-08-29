@@ -16,6 +16,7 @@ import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.io.IOException
 import kotlin.math.max
@@ -47,20 +48,36 @@ class OcrEngine(private val context: Context) {
         val w = bitmap.width
         val h = bitmap.height
         return try {
-            val visionText: Text? = runCatching {
-                latin.process(InputImage.fromBitmap(bitmap, 0)).await()
-            }.getOrNull()
+            // ML Kit (Latin). Time-boxed so one pathological image can't stall
+            // the whole indexing queue (on timeout we just drop this engine's
+            // result for this photo).
+            val visionText: Text? = withTimeoutOrNull(ENGINE_TIMEOUT_MS) {
+                runCatching { latin.process(InputImage.fromBitmap(bitmap, 0)).await() }.getOrNull()
+            }
             val latinText = visionText?.text?.trim().orEmpty()
 
-            val (tessText, tessBlocks) = withContext(Dispatchers.Default) {
-                runCatching {
-                    tesseract()?.let { api ->
-                        api.setImage(bitmap)
-                        val t = api.getUTF8Text()?.trim().orEmpty()
-                        t to (if (t.isNotEmpty()) tessLineBlocks(api) else emptyList())
-                    } ?: ("" to emptyList<OcrBlock>())
-                }.getOrDefault("" to emptyList())
+            // Tesseract (Cyrillic). getUTF8Text() is a blocking native call that
+            // ignores coroutine cancellation, so on timeout we (a) ask it to
+            // stop() and (b) ABANDON this recognizer (tess = null) rather than
+            // reuse one whose native call is still unwinding — reusing it would
+            // race/crash. The next photo builds a fresh recognizer.
+            val tessPair: Pair<String, List<OcrBlock>>? = withTimeoutOrNull(ENGINE_TIMEOUT_MS) {
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                        tesseract()?.let { api ->
+                            api.setImage(bitmap)
+                            val t = api.getUTF8Text()?.trim().orEmpty()
+                            t to (if (t.isNotEmpty()) tessLineBlocks(api) else emptyList())
+                        } ?: ("" to emptyList<OcrBlock>())
+                    }.getOrDefault("" to emptyList())
+                }
             }
+            if (tessPair == null) {
+                Log.w(TAG, "Tesseract timed out for $uri; skipping it for this photo")
+                runCatching { tess?.stop() }
+                tess = null
+            }
+            val (tessText, tessBlocks) = tessPair ?: ("" to emptyList())
 
             val useTess = preferTess(latinText, tessText)
             val text = if (useTess) tessText else latinText
@@ -69,9 +86,10 @@ class OcrEngine(private val context: Context) {
         } catch (e: Exception) {
             Log.w(TAG, "OCR failed for $uri", e)
             null
-        } finally {
-            bitmap.recycle()
         }
+        // No bitmap.recycle(): after a timeout the aborted native call may still
+        // reference the bitmap briefly. It is already downscaled, so we let GC
+        // reclaim it rather than risk recycling one that is still in use.
     }
 
     private fun preferTess(latinText: String, tessText: String): Boolean {
@@ -141,6 +159,9 @@ class OcrEngine(private val context: Context) {
     companion object {
         private const val TAG = "OcrEngine"
         private const val MAX_DIM = 1600
+        // Per-engine, per-photo budget. A normal page is well under a second;
+        // this only fires on a pathological image so it can be skipped.
+        private const val ENGINE_TIMEOUT_MS = 20_000L
     }
 }
 
