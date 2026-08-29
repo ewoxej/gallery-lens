@@ -8,6 +8,10 @@
     <string name="gallery_empty">Gallery is empty or still indexing</string>
     <string name="no_results">Nothing found</string>
 
+    <!-- Indexing notification -->
+    <string name="notif_channel_indexing">Indexing</string>
+    <string name="notif_indexing_title">Indexing photos</string>
+
     <!-- Photo viewer -->
     <string name="action_show_text">Show text</string>
     <string name="text_on_photo">Text on photo</string>

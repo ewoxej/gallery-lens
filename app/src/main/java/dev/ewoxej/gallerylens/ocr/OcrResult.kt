@@ -12,7 +12,11 @@ data class OcrBlock(
 )
 
 data class OcrResult(
+    /** Display transcript + boxes from the engine chosen for this image. */
     val text: String,
+    /** What goes into the search index — the union of both engines' text, so a
+     *  mixed Latin+Cyrillic photo is findable by either script. */
+    val searchText: String,
     val width: Int,
     val height: Int,
     val blocks: List<OcrBlock>,

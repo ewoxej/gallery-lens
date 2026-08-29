@@ -28,14 +28,26 @@ interface PhotoDao {
     suspend fun maxMediaId(): Long?
 
     @Transaction
-    suspend fun applyOcrResult(id: Long, text: String, blocksJson: String?, w: Int, h: Int, atMs: Long) {
+    suspend fun applyOcrResult(
+        id: Long,
+        text: String,
+        searchText: String,
+        blocksJson: String?,
+        w: Int,
+        h: Int,
+        atMs: Long,
+    ) {
         deleteFts(id)
-        val trimmed = text.trim()
-        if (trimmed.isEmpty()) {
+        val display = text.trim()
+        val search = searchText.trim()
+        if (display.isEmpty() && search.isEmpty()) {
             setResult(id, PhotoStatus.NO_TEXT, null, null, null, null, atMs)
         } else {
-            setResult(id, PhotoStatus.DONE, trimmed, w, h, blocksJson, atMs)
-            insertFts(PhotoFts(rowid = id, text = trimmed.replace('ё', 'е').replace('Ё', 'Е')))
+            // ocrText is the displayed transcript; the FTS index gets the union
+            // of both engines (so a mixed photo is findable by either script).
+            setResult(id, PhotoStatus.DONE, display, w, h, blocksJson, atMs)
+            val ftsText = search.ifEmpty { display }
+            insertFts(PhotoFts(rowid = id, text = ftsText.replace('ё', 'е').replace('Ё', 'Е')))
         }
     }
 

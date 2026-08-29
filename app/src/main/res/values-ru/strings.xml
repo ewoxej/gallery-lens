@@ -8,6 +8,10 @@
     <string name="gallery_empty">Галерея пуста или ещё индексируется</string>
     <string name="no_results">Ничего не найдено</string>
 
+    <!-- Indexing notification -->
+    <string name="notif_channel_indexing">Индексация</string>
+    <string name="notif_indexing_title">Индексация фото</string>
+
     <!-- Photo viewer -->
     <string name="action_show_text">Показать текст</string>
     <string name="text_on_photo">Текст на фото</string>
