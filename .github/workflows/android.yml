@@ -74,14 +74,25 @@ jobs:
           path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
 
+      # For the rolling "dev" prerelease, wipe the previous release AND its tag
+      # first, so the new run fully replaces it (old assets gone, tag moved to
+      # this commit). Without this, updating an existing release can leave stale
+      # assets / a stale tag. Only for manual runs; real v* tags are never touched.
+      - name: Reset previous dev prerelease
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release delete "${{ steps.ver.outputs.tag }}" --cleanup-tag --yes || true
+
       # Publishes a proper GitHub Release with the APKs attached (direct,
       # shareable download links) — for tag pushes AND manual runs. Manual runs
-      # go to a rolling "dev" prerelease that is overwritten each time, so its
-      # link stays stable; pushing a v* tag cuts a real, non-prerelease release.
+      # go to the "dev" prerelease (freshly recreated above); pushing a v* tag
+      # cuts a real, non-prerelease release.
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.ver.outputs.tag }}
+          target_commitish: ${{ github.sha }}
           name: Gallery Lens ${{ steps.ver.outputs.name }}
           files: app/build/outputs/apk/release/*.apk
           generate_release_notes: true
