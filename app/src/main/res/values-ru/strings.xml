@@ -7,6 +7,7 @@
     <string name="indexing_progress">Индексация: %1$d из %2$d</string>
     <string name="gallery_empty">Галерея пуста или ещё индексируется</string>
     <string name="no_results">Ничего не найдено</string>
+    <string name="filter_with_text">Только с текстом</string>
 
     <!-- Indexing notification -->
     <string name="notif_channel_indexing">Индексация</string>

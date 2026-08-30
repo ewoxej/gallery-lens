@@ -19,8 +19,10 @@ import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -59,6 +61,7 @@ fun SearchScreen(vm: MainViewModel, onOpen: (Int) -> Unit, onOpenSettings: () ->
     val query by vm.query.collectAsStateWithLifecycle()
     val results by vm.results.collectAsStateWithLifecycle()
     val status by vm.status.collectAsStateWithLifecycle()
+    val onlyWithText by vm.onlyWithText.collectAsStateWithLifecycle()
     val gridState = rememberLazyGridState()
 
     Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
@@ -75,6 +78,19 @@ fun SearchScreen(vm: MainViewModel, onOpen: (Int) -> Unit, onOpenSettings: () ->
             placeholder = { Text(stringResource(R.string.search_placeholder)) },
             singleLine = true,
         )
+
+        // Gallery-mode filter (no effect while searching — results are already text).
+        if (query.isBlank()) {
+            FilterChip(
+                selected = onlyWithText,
+                onClick = { vm.setOnlyWithText(!onlyWithText) },
+                label = { Text(stringResource(R.string.filter_with_text)) },
+                leadingIcon = if (onlyWithText) {
+                    { Icon(Icons.Default.Check, contentDescription = null) }
+                } else null,
+                modifier = Modifier.padding(bottom = 4.dp),
+            )
+        }
 
         if (status.isIndexing) {
             val progress = if (status.total > 0) status.done.toFloat() / status.total else 0f

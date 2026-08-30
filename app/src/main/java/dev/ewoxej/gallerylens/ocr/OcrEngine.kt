@@ -89,12 +89,15 @@ class OcrEngine(private val context: Context) {
             }
             val tessRes = tessOut ?: TessResult("", emptyList(), 0)
 
-            val useTess = preferTess(latinText, tessRes.text, tessRes.confidence)
+            Lexicon.ensureLoaded(context)
+            val useTess = chooseUseTess(latinText, tessRes.text, tessRes.confidence)
             val text = if (useTess) tessRes.text else latinText
             val blocks = if (useTess) tessRes.blocks else mlkitLineBlocks(visionText)
-            // Index the union of both engines so a mixed Latin+Cyrillic photo is
-            // found by either script, regardless of which engine we display.
-            val searchText = unionText(latinText, tessRes.text)
+            // Index the chosen transcript in full plus the *real* words from the
+            // other engine, so a mixed photo is found by either script while the
+            // other engine's OCR garbage stays out of the index.
+            val other = if (useTess) latinText else tessRes.text
+            val searchText = buildSearchText(text, other)
             OcrResult(text, searchText, w, h, blocks)
         } catch (e: Exception) {
             Log.w(TAG, "OCR failed for $uri", e)
@@ -103,6 +106,42 @@ class OcrEngine(private val context: Context) {
         // No bitmap.recycle(): after a timeout the aborted native call may still
         // reference the bitmap briefly. It is already downscaled, so we let GC
         // reclaim it rather than risk recycling one that is still in use.
+    }
+
+    /**
+     * Pick the transcript to DISPLAY by which one is made of more *real* words
+     * (dictionary check). This is what fixes Cyrillic-read-as-Latin: ML Kit's
+     * "npuBes BaM yrnA" scores ~0 against the Latin dictionary while Tesseract's
+     * "привёз вам угля" scores high against the Cyrillic one, so Tesseract wins.
+     * Falls back to the script/confidence heuristic when the lists aren't loaded
+     * or the two look equally (un)real.
+     */
+    private fun chooseUseTess(latinText: String, tessText: String, tessConfidence: Int): Boolean {
+        if (tessText.isEmpty()) return false
+        if (latinText.isEmpty()) return true
+        val mlkitReal = Lexicon.realFraction(latinText)
+        val tessReal = Lexicon.realFraction(tessText)
+        if (mlkitReal >= 0f && tessReal >= 0f) {
+            if (tessReal > mlkitReal + 0.15f) return true
+            if (mlkitReal > tessReal + 0.15f) return false
+        }
+        return preferTess(latinText, tessText, tessConfidence)
+    }
+
+    /**
+     * Search index = the chosen transcript in full (keeps numbers, names, rare
+     * words for recall) plus only the real words from the other engine (adds a
+     * mixed photo's other script without letting its OCR garbage into the index).
+     * Falls back to a plain union when the dictionaries aren't loaded.
+     */
+    private fun buildSearchText(chosen: String, other: String): String {
+        if (other.isEmpty()) return chosen
+        if (!Lexicon.ready) return unionText(chosen, other)
+        val lines = LinkedHashSet<String>()
+        chosen.lineSequence().forEach { val s = it.trim(); if (s.isNotEmpty()) lines += s }
+        val extra = Lexicon.realWords(other).filterNot { chosen.contains(it, ignoreCase = true) }
+        if (extra.isNotEmpty()) lines += extra.joinToString(" ")
+        return lines.joinToString("\n")
     }
 
     /**

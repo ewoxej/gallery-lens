@@ -2,8 +2,15 @@ package dev.ewoxej.gallerylens.data
 
 class SearchRepository(private val dao: PhotoDao) {
 
-    suspend fun search(raw: String): List<PhotoEntity> {
-        val fts = toFtsQuery(raw) ?: return dao.allByDateDesc(GALLERY_LIMIT)
+    /**
+     * With a query -> full-text search (results are inherently "with text").
+     * Blank query -> the gallery grid: all photos, or only those with recognised
+     * text when [onlyWithText] is on.
+     */
+    suspend fun results(raw: String, onlyWithText: Boolean): List<PhotoEntity> {
+        val fts = toFtsQuery(raw)
+            ?: return if (onlyWithText) dao.recentWithText(GALLERY_LIMIT)
+            else dao.allByDateDesc(GALLERY_LIMIT)
         return runCatching { dao.search(fts) }.getOrDefault(emptyList())
     }
 

@@ -48,10 +48,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query.asStateFlow()
 
+    private val _onlyWithText = MutableStateFlow(false)
+    val onlyWithText: StateFlow<Boolean> = _onlyWithText.asStateFlow()
+
     val results: StateFlow<List<PhotoEntity>> =
-        _query
-            .debounce(250)
-            .flatMapLatest { q -> kotlinx.coroutines.flow.flow { emit(repo.search(q)) } }
+        combine(_query.debounce(250), _onlyWithText) { q, only -> q to only }
+            .flatMapLatest { (q, only) ->
+                kotlinx.coroutines.flow.flow { emit(repo.results(q, only)) }
+            }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val stats: StateFlow<Stats> =
@@ -66,6 +70,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Stats())
 
     fun onQueryChange(q: String) { _query.value = q }
+
+    fun setOnlyWithText(on: Boolean) { _onlyWithText.value = on }
 
     /** Drop all OCR output and re-queue every photo for re-recognition. */
     fun reindexAll() {
