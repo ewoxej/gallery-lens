@@ -18,7 +18,9 @@ interface PhotoDao {
     @Query("SELECT COUNT(*) FROM photos")
     fun countAll(): Flow<Int>
 
-    @Query("SELECT COUNT(*) FROM photos WHERE status = 'PENDING'")
+    // Pending for the progress bar = local queue + cloud queue (so the UI keeps
+    // showing "indexing" while a Claude batch is still processing).
+    @Query("SELECT COUNT(*) FROM photos WHERE status IN ('PENDING','CLOUD_PENDING','CLOUD_SUBMITTED')")
     fun countPending(): Flow<Int>
 
     @Query("SELECT COUNT(*) FROM photos WHERE status = 'DONE'")
@@ -27,6 +29,12 @@ interface PhotoDao {
     @Query("SELECT MAX(mediaId) FROM photos")
     suspend fun maxMediaId(): Long?
 
+    /**
+     * Store a local OCR result. [pendingCloud] = the photo is queued for a Claude
+     * batch re-read: it becomes CLOUD_PENDING (still searchable by the local text
+     * meanwhile) instead of DONE; a blank local result is kept CLOUD_PENDING too so
+     * the cloud pass still picks it up.
+     */
     @Transaction
     suspend fun applyOcrResult(
         id: Long,
@@ -36,18 +44,55 @@ interface PhotoDao {
         w: Int,
         h: Int,
         atMs: Long,
+        pendingCloud: Boolean = false,
     ) {
         deleteFts(id)
         val display = text.trim()
         val search = searchText.trim()
-        if (display.isEmpty() && search.isEmpty()) {
-            setResult(id, PhotoStatus.NO_TEXT, null, null, null, null, atMs)
+        val hasText = display.isNotEmpty() || search.isNotEmpty()
+        val status = when {
+            pendingCloud -> PhotoStatus.CLOUD_PENDING
+            hasText -> PhotoStatus.DONE
+            else -> PhotoStatus.NO_TEXT
+        }
+        if (!hasText) {
+            setResult(id, status, null, null, null, null, atMs)
         } else {
-            // ocrText is the displayed transcript; the FTS index gets the union
-            // of both engines (so a mixed photo is findable by either script).
-            setResult(id, PhotoStatus.DONE, display, w, h, blocksJson, atMs)
+            setResult(id, status, display.ifEmpty { null }, w, h, blocksJson, atMs)
             val ftsText = search.ifEmpty { display }
             insertFts(PhotoFts(rowid = id, text = ftsText.replace('ё', 'е').replace('Ё', 'Е')))
+        }
+    }
+
+    // --- Cloud (Batch API) queue ---
+
+    @Query("SELECT * FROM photos WHERE status = 'CLOUD_PENDING' ORDER BY dateTakenMs DESC LIMIT :limit")
+    suspend fun nextCloudPending(limit: Int): List<PhotoEntity>
+
+    @Query("SELECT * FROM photos WHERE status = 'CLOUD_SUBMITTED'")
+    suspend fun submittedPhotos(): List<PhotoEntity>
+
+    @Query("UPDATE photos SET status = 'CLOUD_SUBMITTED' WHERE id IN (:ids)")
+    suspend fun markSubmitted(ids: List<Long>)
+
+    /** Batch failed/expired — send its photos back to the cloud queue to retry. */
+    @Query("UPDATE photos SET status = 'CLOUD_PENDING' WHERE status = 'CLOUD_SUBMITTED'")
+    suspend fun resetSubmittedToPending()
+
+    /** Cloud returned no text for this photo — finish with whatever local text we had. */
+    @Query("UPDATE photos SET status = CASE WHEN ocrText IS NULL THEN 'NO_TEXT' ELSE 'DONE' END WHERE id = :id")
+    suspend fun finalizeCloudFailed(id: Long)
+
+    /** Replace the transcript with the cloud result (no box coords from the API). */
+    @Transaction
+    suspend fun applyCloudResult(id: Long, cloudText: String, atMs: Long) {
+        deleteFts(id)
+        val t = cloudText.trim()
+        if (t.isEmpty()) {
+            finalizeCloudFailed(id)
+        } else {
+            setResult(id, PhotoStatus.DONE, t, null, null, null, atMs)
+            insertFts(PhotoFts(rowid = id, text = t.replace('ё', 'е').replace('Ё', 'Е')))
         }
     }
 

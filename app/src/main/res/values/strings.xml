@@ -40,4 +40,14 @@
     <string name="reindex_confirm_message">The text on %1$d photos will be recognised again. This may take a while.</string>
     <string name="reindex_confirm_yes">Re-index</string>
     <string name="cancel">Cancel</string>
+
+    <!-- Cloud OCR (Claude API) -->
+    <string name="cloud_title">Cloud recognition (Claude API)</string>
+    <string name="cloud_enable">Read hard photos with Claude API</string>
+    <string name="cloud_all">Send every photo to Claude</string>
+    <string name="cloud_all_hint">Higher accuracy but more API calls — use if local OCR is consistently poor.</string>
+    <string name="cloud_key_label">Anthropic API key</string>
+    <string name="cloud_desc">When local OCR gives poor results, the photo is sent to the Claude API to read its text (stylised, blurry, or mixed-language images). Requires your own key from console.anthropic.com — usage is billed to that key. Off by default; photos leave the device only while this is on.</string>
+    <string name="action_show_key">Show key</string>
+    <string name="action_hide_key">Hide key</string>
 </resources>

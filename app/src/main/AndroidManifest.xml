@@ -7,6 +7,9 @@
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
 
+    <!-- Cloud OCR fallback (Claude API) — only used when the user enables it. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <!-- Keep OCR indexing running with the screen off (foreground service). -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />

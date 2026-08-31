@@ -6,7 +6,13 @@ import androidx.room.FtsOptions
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
-enum class PhotoStatus { PENDING, DONE, FAILED, NO_TEXT }
+/**
+ * Indexing lifecycle. CLOUD_PENDING/CLOUD_SUBMITTED are the Batch-API cloud stages:
+ * local OCR is done (its text is stored + searchable) but the photo is queued for /
+ * in a Claude batch that will replace the text. These are just enum name strings in
+ * a TEXT column, so adding them needs no DB migration.
+ */
+enum class PhotoStatus { PENDING, DONE, FAILED, NO_TEXT, CLOUD_PENDING, CLOUD_SUBMITTED }
 
 @Entity(
     tableName = "photos",

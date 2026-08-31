@@ -40,4 +40,14 @@
     <string name="reindex_confirm_message">Будет заново распознан текст на %1$d фото. Это может занять время.</string>
     <string name="reindex_confirm_yes">Переиндексировать</string>
     <string name="cancel">Отмена</string>
+
+    <!-- Облачное распознавание (Claude API) -->
+    <string name="cloud_title">Облачное распознавание (Claude API)</string>
+    <string name="cloud_enable">Распознавать сложные фото через Claude API</string>
+    <string name="cloud_all">Все фото через Claude</string>
+    <string name="cloud_all_hint">Точнее, но больше запросов к API — если локальный OCR совсем плохой.</string>
+    <string name="cloud_key_label">API-ключ Anthropic</string>
+    <string name="cloud_desc">Когда локальный OCR даёт плохой результат, фото отправляется в Claude API для распознавания текста (стилизованные, размытые, разноязычные картинки). Нужен ваш ключ с console.anthropic.com — оплата идёт по нему. По умолчанию выключено; фото покидают устройство только при включённой опции.</string>
+    <string name="action_show_key">Показать ключ</string>
+    <string name="action_hide_key">Скрыть ключ</string>
 </resources>

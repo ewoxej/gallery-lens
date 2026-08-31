@@ -98,6 +98,8 @@ class OcrEngine(private val context: Context) {
             // other engine's OCR garbage stays out of the index.
             val other = if (useTess) latinText else tessRes.text
             val searchText = buildSearchText(text, other)
+            // Local-only result. The cloud (Claude) pass runs separately in the
+            // worker via the Batch API — see CloudBatch / cloudWanted().
             OcrResult(text, searchText, w, h, blocks)
         } catch (e: Exception) {
             Log.w(TAG, "OCR failed for $uri", e)

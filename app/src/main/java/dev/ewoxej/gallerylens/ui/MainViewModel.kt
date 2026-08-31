@@ -77,6 +77,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun reindexAll() {
         viewModelScope.launch {
             withContext(Dispatchers.IO) { dao.reindexAll() }
+            dev.ewoxej.gallerylens.data.Settings.setPendingBatchId(getApplication(), null)
             IndexingWorker.enqueue(getApplication())
         }
     }
