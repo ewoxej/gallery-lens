@@ -50,4 +50,6 @@
     <string name="cloud_desc">When local OCR gives poor results, the photo is sent to the Claude API to read its text (stylised, blurry, or mixed-language images). Requires your own key from console.anthropic.com — usage is billed to that key. Off by default; photos leave the device only while this is on.</string>
     <string name="action_show_key">Show key</string>
     <string name="action_hide_key">Hide key</string>
+    <string name="cloud_send_now">Send indexed photos to cloud</string>
+    <string name="cloud_send_now_desc">New photos are sent automatically; use this to re-read photos indexed before cloud OCR was turned on. Follows the mode above (all photos, or only weak results). Progress shows in the queued count above.</string>
 </resources>

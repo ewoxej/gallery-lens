@@ -82,6 +82,27 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Manually queue the already-indexed library for a cloud (Claude batch) re-read,
+     * respecting the current mode: "all photos" queues everything, otherwise only
+     * photos whose local text looks like garbage. Kicks the worker to run the batch.
+     */
+    fun sendToCloud() {
+        viewModelScope.launch {
+            val ctx = getApplication<Application>()
+            if (!dev.ewoxej.gallerylens.data.Settings.cloudReady(ctx)) return@launch
+            val queued = withContext(Dispatchers.IO) {
+                dev.ewoxej.gallerylens.ocr.Lexicon.ensureLoaded(ctx)
+                val ids = dao.locallyFinished()
+                    .filter { dev.ewoxej.gallerylens.ocr.cloudWanted(ctx, it.ocrText.orEmpty()) }
+                    .map { it.id }
+                ids.chunked(400).forEach { dao.markCloudPending(it) }
+                ids.size
+            }
+            if (queued > 0) IndexingWorker.enqueue(ctx)
+        }
+    }
+
     /** Called once the media permission is granted, and on every cold start. */
     fun startIndexing() {
         val app = getApplication<Application>()

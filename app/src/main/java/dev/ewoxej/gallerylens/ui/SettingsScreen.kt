@@ -91,7 +91,7 @@ fun SettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            CloudSection()
+            CloudSection(vm)
         }
     }
 
@@ -113,7 +113,7 @@ fun SettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
 }
 
 @Composable
-private fun CloudSection() {
+private fun CloudSection(vm: MainViewModel) {
     val context = LocalContext.current
     var enabled by remember { mutableStateOf(Settings.cloudEnabled(context)) }
     var always by remember { mutableStateOf(Settings.cloudAlways(context)) }
@@ -178,6 +178,21 @@ private fun CloudSection() {
 
     Text(
         stringResource(R.string.cloud_desc),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+
+    // Manually push the already-indexed library through the cloud (new photos are
+    // queued automatically; this catches everything indexed before cloud was on).
+    OutlinedButton(
+        onClick = { vm.sendToCloud() },
+        modifier = Modifier.fillMaxWidth(),
+        enabled = enabled && apiKey.isNotBlank(),
+    ) {
+        Text(stringResource(R.string.cloud_send_now))
+    }
+    Text(
+        stringResource(R.string.cloud_send_now_desc),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )

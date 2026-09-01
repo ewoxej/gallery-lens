@@ -33,6 +33,9 @@ data class PhotoEntity(
     val indexedAtMs: Long? = null,
 )
 
+/** Lightweight projection: a photo id + its stored local transcript. */
+data class PhotoText(val id: Long, val ocrText: String?)
+
 // unicode61 case-folds Cyrillic (the default `simple` tokenizer folds ASCII
 // only). remove_diacritics=1 strips accents on BOTH the indexed text and the
 // MATCH query, so search is diacritic-insensitive: "orult" finds "őrült/örült",

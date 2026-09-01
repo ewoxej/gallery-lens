@@ -66,6 +66,15 @@ interface PhotoDao {
 
     // --- Cloud (Batch API) queue ---
 
+    /** id + local transcript of every locally-finished photo (for the manual
+     *  "send to cloud" action to re-evaluate against the current cloud mode). */
+    @Query("SELECT id, ocrText FROM photos WHERE status IN ('DONE','NO_TEXT')")
+    suspend fun locallyFinished(): List<PhotoText>
+
+    /** Queue already-finished photos for a cloud re-read (keeps their local text). */
+    @Query("UPDATE photos SET status = 'CLOUD_PENDING' WHERE id IN (:ids)")
+    suspend fun markCloudPending(ids: List<Long>)
+
     @Query("SELECT * FROM photos WHERE status = 'CLOUD_PENDING' ORDER BY dateTakenMs DESC LIMIT :limit")
     suspend fun nextCloudPending(limit: Int): List<PhotoEntity>
 
