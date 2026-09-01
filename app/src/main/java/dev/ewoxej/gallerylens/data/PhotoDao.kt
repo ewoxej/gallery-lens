@@ -75,6 +75,12 @@ interface PhotoDao {
     @Query("UPDATE photos SET status = 'CLOUD_PENDING' WHERE id IN (:ids)")
     suspend fun markCloudPending(ids: List<Long>)
 
+    /** "All photos" mode: skip local OCR entirely — send fresh photos straight to
+     *  the cloud queue so the batch starts immediately instead of after a full
+     *  (and, in this mode, pointless) local pass. */
+    @Query("UPDATE photos SET status = 'CLOUD_PENDING' WHERE status = 'PENDING'")
+    suspend fun movePendingToCloud()
+
     @Query("SELECT * FROM photos WHERE status = 'CLOUD_PENDING' ORDER BY dateTakenMs DESC LIMIT :limit")
     suspend fun nextCloudPending(limit: Int): List<PhotoEntity>
 
