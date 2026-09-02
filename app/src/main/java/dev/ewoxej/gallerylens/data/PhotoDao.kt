@@ -12,18 +12,21 @@ interface PhotoDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertIgnore(photos: List<PhotoEntity>): List<Long>
 
-    @Query("SELECT * FROM photos WHERE status = 'PENDING' ORDER BY dateTakenMs DESC LIMIT :limit")
+    // All queue/gallery/count queries are scoped to included = 1: photos in
+    // de-selected albums stay in the table (OCR preserved) but are invisible to
+    // indexing, the gallery, search, and the stats.
+    @Query("SELECT * FROM photos WHERE status = 'PENDING' AND included = 1 ORDER BY dateTakenMs DESC LIMIT :limit")
     suspend fun nextPending(limit: Int): List<PhotoEntity>
 
-    @Query("SELECT COUNT(*) FROM photos")
+    @Query("SELECT COUNT(*) FROM photos WHERE included = 1")
     fun countAll(): Flow<Int>
 
     // Pending for the progress bar = local queue + cloud queue (so the UI keeps
     // showing "indexing" while a Claude batch is still processing).
-    @Query("SELECT COUNT(*) FROM photos WHERE status IN ('PENDING','CLOUD_PENDING','CLOUD_SUBMITTED')")
+    @Query("SELECT COUNT(*) FROM photos WHERE status IN ('PENDING','CLOUD_PENDING','CLOUD_SUBMITTED') AND included = 1")
     fun countPending(): Flow<Int>
 
-    @Query("SELECT COUNT(*) FROM photos WHERE status = 'DONE'")
+    @Query("SELECT COUNT(*) FROM photos WHERE status = 'DONE' AND included = 1")
     fun countDone(): Flow<Int>
 
     @Query("SELECT MAX(mediaId) FROM photos")
@@ -68,7 +71,7 @@ interface PhotoDao {
 
     /** id + local transcript of every locally-finished photo (for the manual
      *  "send to cloud" action to re-evaluate against the current cloud mode). */
-    @Query("SELECT id, ocrText FROM photos WHERE status IN ('DONE','NO_TEXT')")
+    @Query("SELECT id, ocrText FROM photos WHERE status IN ('DONE','NO_TEXT') AND included = 1")
     suspend fun locallyFinished(): List<PhotoText>
 
     /** Queue already-finished photos for a cloud re-read (keeps their local text). */
@@ -78,11 +81,37 @@ interface PhotoDao {
     /** "All photos" mode: skip local OCR entirely — send fresh photos straight to
      *  the cloud queue so the batch starts immediately instead of after a full
      *  (and, in this mode, pointless) local pass. */
-    @Query("UPDATE photos SET status = 'CLOUD_PENDING' WHERE status = 'PENDING'")
+    @Query("UPDATE photos SET status = 'CLOUD_PENDING' WHERE status = 'PENDING' AND included = 1")
     suspend fun movePendingToCloud()
 
-    @Query("SELECT * FROM photos WHERE status = 'CLOUD_PENDING' ORDER BY dateTakenMs DESC LIMIT :limit")
+    @Query("SELECT * FROM photos WHERE status = 'CLOUD_PENDING' AND included = 1 ORDER BY dateTakenMs DESC LIMIT :limit")
     suspend fun nextCloudPending(limit: Int): List<PhotoEntity>
+
+    // --- Album filter ---
+
+    @Query("UPDATE photos SET included = 1")
+    suspend fun includeAllAlbums()
+
+    @Query("UPDATE photos SET included = 0")
+    suspend fun excludeAllAlbums()
+
+    @Query("UPDATE photos SET included = 1 WHERE COALESCE(bucketName, '') IN (:keys)")
+    suspend fun includeBuckets(keys: List<String>)
+
+    /**
+     * Reconcile every photo's [PhotoEntity.included] flag to the selection.
+     * null = all albums (clear the filter). Photos keep their status/OCR, so
+     * re-including an album shows its already-recognised text instantly.
+     */
+    @Transaction
+    suspend fun applyAlbumFilter(keys: Set<String>?) {
+        if (keys == null) {
+            includeAllAlbums()
+        } else {
+            excludeAllAlbums()
+            if (keys.isNotEmpty()) includeBuckets(keys.toList())
+        }
+    }
 
     @Query("SELECT * FROM photos WHERE status = 'CLOUD_SUBMITTED'")
     suspend fun submittedPhotos(): List<PhotoEntity>
@@ -136,7 +165,7 @@ interface PhotoDao {
         """
         SELECT p.* FROM photos p
         JOIN photo_fts f ON p.id = f.rowid
-        WHERE photo_fts MATCH :ftsQuery
+        WHERE photo_fts MATCH :ftsQuery AND p.included = 1
         ORDER BY p.dateTakenMs DESC
         """
     )
@@ -145,13 +174,13 @@ interface PhotoDao {
     @Query("SELECT * FROM photos WHERE id = :id")
     suspend fun byId(id: Long): PhotoEntity?
 
-    @Query("SELECT * FROM photos WHERE status = 'DONE' ORDER BY dateTakenMs DESC LIMIT :limit")
+    @Query("SELECT * FROM photos WHERE status = 'DONE' AND included = 1 ORDER BY dateTakenMs DESC LIMIT :limit")
     suspend fun recentWithText(limit: Int): List<PhotoEntity>
 
-    @Query("SELECT * FROM photos ORDER BY dateTakenMs DESC LIMIT :limit")
+    @Query("SELECT * FROM photos WHERE included = 1 ORDER BY dateTakenMs DESC LIMIT :limit")
     suspend fun allByDateDesc(limit: Int): List<PhotoEntity>
 
-    @Query("SELECT COUNT(*) FROM photos WHERE status = :status")
+    @Query("SELECT COUNT(*) FROM photos WHERE status = :status AND included = 1")
     fun countByStatus(status: PhotoStatus): Flow<Int>
 
     @Query("DELETE FROM photo_fts")

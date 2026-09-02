@@ -31,6 +31,9 @@ data class PhotoEntity(
     val ocrHeight: Int? = null,
     val blocksJson: String? = null,
     val indexedAtMs: Long? = null,
+    // Album filter: photos in de-selected albums are kept (OCR preserved) but
+    // hidden from the gallery/search and skipped by indexing. Default included.
+    val included: Boolean = true,
 )
 
 /** Lightweight projection: a photo id + its stored local transcript. */

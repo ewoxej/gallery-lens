@@ -5,11 +5,18 @@ import android.content.Context
 import android.provider.MediaStore
 import dev.ewoxej.gallerylens.data.PhotoDao
 import dev.ewoxej.gallerylens.data.PhotoEntity
+import dev.ewoxej.gallerylens.data.Settings
+
+/** An on-device album (MediaStore bucket) with how many photos it holds. */
+data class Album(val key: String, val name: String, val count: Int)
 
 class MediaScanner(private val context: Context, private val dao: PhotoDao) {
 
     suspend fun scan(): Int {
         val sinceId = dao.maxMediaId() ?: 0L
+        // Null = all albums (no filter). New photos in de-selected albums are
+        // stored but flagged excluded so they're never shown or indexed.
+        val included = Settings.includedBuckets(context)
 
         val collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
         val projection = arrayOf(
@@ -31,6 +38,7 @@ class MediaScanner(private val context: Context, private val dao: PhotoDao) {
             while (c.moveToNext()) {
                 val mediaId = c.getLong(idCol)
                 val uri = ContentUris.withAppendedId(collection, mediaId)
+                val bucket = c.getString(bucketCol)
                 // DATE_TAKEN is ms; DATE_ADDED is seconds. Fall back to added when
                 // taken is missing (0), which happens for non-camera images.
                 val takenMs = c.getLong(takenCol).takeIf { it > 0 }
@@ -38,9 +46,10 @@ class MediaScanner(private val context: Context, private val dao: PhotoDao) {
                 found += PhotoEntity(
                     mediaId = mediaId,
                     uri = uri.toString(),
-                    bucketName = c.getString(bucketCol),
+                    bucketName = bucket,
                     dateTakenMs = takenMs,
                     dateAddedMs = c.getLong(addedCol) * 1000L,
+                    included = included == null || (bucket ?: "") in included,
                 )
             }
         }
@@ -48,5 +57,27 @@ class MediaScanner(private val context: Context, private val dao: PhotoDao) {
         if (found.isEmpty()) return 0
         val inserted = dao.insertIgnore(found)
         return inserted.count { it != -1L }
+    }
+
+    /** Every album on the device with its photo count, for the album-filter UI. */
+    fun listAlbums(): List<Album> {
+        val collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+        val projection = arrayOf(MediaStore.Images.Media.BUCKET_DISPLAY_NAME)
+        val counts = LinkedHashMap<String, Int>() // key -> count, insertion order
+        context.contentResolver.query(collection, projection, null, null, null)?.use { c ->
+            val bucketCol = c.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_DISPLAY_NAME)
+            while (c.moveToNext()) {
+                val key = c.getString(bucketCol) ?: ""
+                counts[key] = (counts[key] ?: 0) + 1
+            }
+        }
+        return counts.entries
+            .map { Album(key = it.key, name = it.key.ifEmpty { UNKNOWN_ALBUM }, count = it.value) }
+            .sortedByDescending { it.count }
+    }
+
+    companion object {
+        // Display name for photos MediaStore reports with no bucket name.
+        const val UNKNOWN_ALBUM = "Unknown"
     }
 }

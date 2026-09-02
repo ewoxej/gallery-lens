@@ -43,6 +43,21 @@ object Settings {
     fun cloudReady(context: Context): Boolean =
         cloudEnabled(context) && apiKey(context).isNotBlank()
 
+    // Album filter: the set of album (bucket) keys to index/show. null = every
+    // album (the default — no filter). An empty set means "none selected".
+    private const val KEY_INCLUDED_BUCKETS = "included_buckets"
+
+    fun includedBuckets(context: Context): Set<String>? =
+        // getStringSet returns a shared instance; copy it before handing it out.
+        prefs(context).getStringSet(KEY_INCLUDED_BUCKETS, null)?.let { HashSet(it) }
+
+    fun setIncludedBuckets(context: Context, buckets: Set<String>?) {
+        prefs(context).edit().apply {
+            if (buckets == null) remove(KEY_INCLUDED_BUCKETS)
+            else putStringSet(KEY_INCLUDED_BUCKETS, buckets)
+        }.apply()
+    }
+
     // In-flight Claude batch id — persisted so a batch that hasn't finished when
     // the worker stops is resumed (polled) on the next run instead of resubmitted.
     private const val KEY_BATCH_ID = "cloud_pending_batch_id"

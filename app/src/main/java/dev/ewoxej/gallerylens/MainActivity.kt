@@ -30,6 +30,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import dev.ewoxej.gallerylens.ui.AlbumsScreen
 import dev.ewoxej.gallerylens.ui.MainViewModel
 import dev.ewoxej.gallerylens.ui.PhotoPagerScreen
 import dev.ewoxej.gallerylens.ui.SearchScreen
@@ -90,7 +91,14 @@ private fun AppNav(vm: MainViewModel) {
             PhotoPagerScreen(vm, index, onClose = { nav.popBackStack() })
         }
         composable("settings") {
-            SettingsScreen(vm, onBack = { nav.popBackStack() })
+            SettingsScreen(
+                vm,
+                onBack = { nav.popBackStack() },
+                onOpenAlbums = { nav.navigate("albums") },
+            )
+        }
+        composable("albums") {
+            AlbumsScreen(vm, onBack = { nav.popBackStack() })
         }
     }
 }

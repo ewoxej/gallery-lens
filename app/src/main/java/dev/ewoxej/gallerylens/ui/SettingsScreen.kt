@@ -42,7 +42,7 @@ import dev.ewoxej.gallerylens.data.Settings
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
+fun SettingsScreen(vm: MainViewModel, onBack: () -> Unit, onOpenAlbums: () -> Unit) {
     val stats by vm.stats.collectAsStateWithLifecycle()
     var confirmReindex by remember { mutableStateOf(false) }
 
@@ -78,6 +78,17 @@ fun SettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
             }
 
             Text(stringResource(R.string.indexing_title), style = MaterialTheme.typography.titleMedium)
+            OutlinedButton(
+                onClick = onOpenAlbums,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.albums_action))
+            }
+            Text(
+                stringResource(R.string.albums_action_desc),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             OutlinedButton(
                 onClick = { confirmReindex = true },
                 modifier = Modifier.fillMaxWidth(),

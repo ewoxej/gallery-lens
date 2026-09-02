@@ -52,4 +52,11 @@
     <string name="action_hide_key">Hide key</string>
     <string name="cloud_send_now">Send indexed photos to cloud</string>
     <string name="cloud_send_now_desc">New photos are sent automatically; use this to re-read photos indexed before cloud OCR was turned on. Follows the mode above (all photos, or only weak results). Progress shows in the queued count above.</string>
+    <string name="albums_action">Choose albums to index</string>
+    <string name="albums_action_desc">Only selected albums are shown and recognised; the rest are hidden and skipped.</string>
+    <string name="albums_title">Albums</string>
+    <string name="albums_desc">Photos in de-selected albums are hidden and not indexed. Recognised text is kept, so re-selecting an album shows it again instantly.</string>
+    <string name="albums_select_all">All albums</string>
+    <string name="albums_count">%1$d photos</string>
+    <string name="action_save">Save</string>
 </resources>

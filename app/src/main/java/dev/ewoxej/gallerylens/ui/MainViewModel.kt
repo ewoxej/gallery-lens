@@ -51,12 +51,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _onlyWithText = MutableStateFlow(false)
     val onlyWithText: StateFlow<Boolean> = _onlyWithText.asStateFlow()
 
+    // Bumped to force the one-shot gallery query to re-run (e.g. after the album
+    // selection changes, which the DB-count flows can't signal on their own).
+    private val _refresh = MutableStateFlow(0)
+
     val results: StateFlow<List<PhotoEntity>> =
-        combine(_query.debounce(250), _onlyWithText) { q, only -> q to only }
+        combine(_query.debounce(250), _onlyWithText, _refresh) { q, only, _ -> q to only }
             .flatMapLatest { (q, only) ->
                 kotlinx.coroutines.flow.flow { emit(repo.results(q, only)) }
             }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun refresh() { _refresh.value++ }
 
     val stats: StateFlow<Stats> =
         combine(
@@ -100,6 +106,30 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 ids.size
             }
             if (queued > 0) IndexingWorker.enqueue(ctx)
+        }
+    }
+
+    // --- Album filter ---
+
+    /** Every device album with its photo count, for the album-filter screen. */
+    suspend fun loadAlbums(): List<dev.ewoxej.gallerylens.work.Album> =
+        withContext(Dispatchers.IO) { dev.ewoxej.gallerylens.work.MediaScanner(getApplication(), dao).listAlbums() }
+
+    /** Current selection: null = all albums (no filter). */
+    fun currentAlbumSelection(): Set<String>? =
+        dev.ewoxej.gallerylens.data.Settings.includedBuckets(getApplication())
+
+    /**
+     * Persist an album selection (null = all) and reconcile the DB, then kick the
+     * worker to index any photos that just became included.
+     */
+    fun applyAlbumSelection(selection: Set<String>?) {
+        viewModelScope.launch {
+            val app = getApplication<Application>()
+            dev.ewoxej.gallerylens.data.Settings.setIncludedBuckets(app, selection)
+            withContext(Dispatchers.IO) { dao.applyAlbumFilter(selection) }
+            refresh()
+            IndexingWorker.enqueue(app)
         }
     }
 

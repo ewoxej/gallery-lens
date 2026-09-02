@@ -52,4 +52,11 @@
     <string name="action_hide_key">Скрыть ключ</string>
     <string name="cloud_send_now">Отправить фото в облако</string>
     <string name="cloud_send_now_desc">Новые фото отправляются автоматически; это — чтобы прогнать те, что проиндексированы до включения облака. Работает по режиму выше (все фото или только слабые результаты). Прогресс — в счётчике очереди выше.</string>
+    <string name="albums_action">Выбрать альбомы для индексации</string>
+    <string name="albums_action_desc">Показываются и распознаются только выбранные альбомы; остальные скрыты и пропускаются.</string>
+    <string name="albums_title">Альбомы</string>
+    <string name="albums_desc">Фото из невыбранных альбомов скрыты и не индексируются. Распознанный текст сохраняется — при повторном выборе альбом сразу появляется снова.</string>
+    <string name="albums_select_all">Все альбомы</string>
+    <string name="albums_count">%1$d фото</string>
+    <string name="action_save">Сохранить</string>
 </resources>
