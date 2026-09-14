@@ -21,7 +21,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -102,7 +101,7 @@ fun SettingsScreen(vm: MainViewModel, onBack: () -> Unit, onOpenAlbums: () -> Un
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            CloudSection(vm)
+            OcrSpaceSection()
         }
     }
 
@@ -124,55 +123,20 @@ fun SettingsScreen(vm: MainViewModel, onBack: () -> Unit, onOpenAlbums: () -> Un
 }
 
 @Composable
-private fun CloudSection(vm: MainViewModel) {
+private fun OcrSpaceSection() {
     val context = LocalContext.current
-    var enabled by remember { mutableStateOf(Settings.cloudEnabled(context)) }
-    var always by remember { mutableStateOf(Settings.cloudAlways(context)) }
     var apiKey by remember { mutableStateOf(Settings.apiKey(context)) }
     var showKey by remember { mutableStateOf(false) }
+    // Snapshot of today's usage, read when the screen opens.
+    val usedToday = remember { Settings.ocrUsedToday(context) }
 
-    Text(stringResource(R.string.cloud_title), style = MaterialTheme.typography.titleMedium)
-
-    Row(
-        Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Text(
-            stringResource(R.string.cloud_enable),
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.padding(end = 12.dp).weight(1f),
-        )
-        Switch(
-            checked = enabled,
-            onCheckedChange = { enabled = it; Settings.setCloudEnabled(context, it) },
-        )
-    }
-
-    // "Send every photo to Claude" — only meaningful while cloud OCR is on.
-    Row(
-        Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Column(Modifier.padding(end = 12.dp).weight(1f)) {
-            Text(stringResource(R.string.cloud_all), style = MaterialTheme.typography.bodyMedium)
-            Text(
-                stringResource(R.string.cloud_all_hint),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Switch(
-            checked = always && enabled,
-            enabled = enabled,
-            onCheckedChange = { always = it; Settings.setCloudAlways(context, it) },
-        )
-    }
+    Text(stringResource(R.string.ocr_title), style = MaterialTheme.typography.titleMedium)
 
     OutlinedTextField(
         value = apiKey,
         onValueChange = { apiKey = it; Settings.setApiKey(context, it) },
         modifier = Modifier.fillMaxWidth(),
-        label = { Text(stringResource(R.string.cloud_key_label)) },
+        label = { Text(stringResource(R.string.ocr_key_label)) },
         singleLine = true,
         visualTransformation = if (showKey) VisualTransformation.None else PasswordVisualTransformation(),
         trailingIcon = {
@@ -188,22 +152,13 @@ private fun CloudSection(vm: MainViewModel) {
     )
 
     Text(
-        stringResource(R.string.cloud_desc),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        stringResource(R.string.ocr_usage, usedToday, Settings.DAILY_LIMIT),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.primary,
     )
 
-    // Manually push the already-indexed library through the cloud (new photos are
-    // queued automatically; this catches everything indexed before cloud was on).
-    OutlinedButton(
-        onClick = { vm.sendToCloud() },
-        modifier = Modifier.fillMaxWidth(),
-        enabled = enabled && apiKey.isNotBlank(),
-    ) {
-        Text(stringResource(R.string.cloud_send_now))
-    }
     Text(
-        stringResource(R.string.cloud_send_now_desc),
+        stringResource(R.string.ocr_desc),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )

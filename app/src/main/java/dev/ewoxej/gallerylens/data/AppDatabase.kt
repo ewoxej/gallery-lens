@@ -20,7 +20,8 @@ class Converters {
     entities = [PhotoEntity::class, PhotoFts::class],
     // v3: FTS tokenizer gained remove_diacritics=1 (diacritic-insensitive search).
     // v4: per-photo `included` flag for the album filter.
-    version = 4,
+    // v5: dropped the Claude cloud pipeline — retire its CLOUD_* statuses.
+    version = 5,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
@@ -39,13 +40,21 @@ abstract class AppDatabase : androidx.room.RoomDatabase() {
             }
         }
 
+        // Cloud pipeline removed: send its in-flight rows back to the normal queue
+        // so PhotoStatus.valueOf never meets a now-deleted CLOUD_* name.
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("UPDATE photos SET status = 'PENDING' WHERE status IN ('CLOUD_PENDING','CLOUD_SUBMITTED')")
+            }
+        }
+
         fun get(context: Context): AppDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
                     "vision-search.db",
-                ).addMigrations(MIGRATION_3_4)
+                ).addMigrations(MIGRATION_3_4, MIGRATION_4_5)
                     // Backstop for older/dev schema jumps without a written migration.
                     .fallbackToDestructiveMigration()
                     .build().also { instance = it }

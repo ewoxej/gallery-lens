@@ -42,16 +42,12 @@
     <string name="cancel">Отмена</string>
 
     <!-- Облачное распознавание (Claude API) -->
-    <string name="cloud_title">Облачное распознавание (Claude API)</string>
-    <string name="cloud_enable">Распознавать сложные фото через Claude API</string>
-    <string name="cloud_all">Все фото через Claude</string>
-    <string name="cloud_all_hint">Точнее, но больше запросов к API — если локальный OCR совсем плохой.</string>
-    <string name="cloud_key_label">API-ключ Anthropic</string>
-    <string name="cloud_desc">Когда локальный OCR даёт плохой результат, фото отправляется в Claude API для распознавания текста (стилизованные, размытые, разноязычные картинки). Нужен ваш ключ с console.anthropic.com — оплата идёт по нему. По умолчанию выключено; фото покидают устройство только при включённой опции.</string>
+    <string name="ocr_title">Распознавание текста (OCR.space)</string>
+    <string name="ocr_key_label">API-ключ OCR.space</string>
+    <string name="ocr_usage">Использовано сегодня: %1$d / %2$d</string>
+    <string name="ocr_desc">Текст распознаётся через API OCR.space. Бесплатный ключ можно получить на ocr.space — бесплатный тариф даёт 500 фото в день. Большие фото уменьшаются и сжимаются до 1 МБ перед отправкой. При достижении дневного лимита индексация приостанавливается и автоматически продолжается на следующий день.</string>
     <string name="action_show_key">Показать ключ</string>
     <string name="action_hide_key">Скрыть ключ</string>
-    <string name="cloud_send_now">Отправить фото в облако</string>
-    <string name="cloud_send_now_desc">Новые фото отправляются автоматически; это — чтобы прогнать те, что проиндексированы до включения облака. Работает по режиму выше (все фото или только слабые результаты). Прогресс — в счётчике очереди выше.</string>
     <string name="albums_action">Выбрать альбомы для индексации</string>
     <string name="albums_action_desc">Показываются и распознаются только выбранные альбомы; остальные скрыты и пропускаются.</string>
     <string name="albums_title">Альбомы</string>

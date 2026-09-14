@@ -7,12 +7,10 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /**
- * Indexing lifecycle. CLOUD_PENDING/CLOUD_SUBMITTED are the Batch-API cloud stages:
- * local OCR is done (its text is stored + searchable) but the photo is queued for /
- * in a Claude batch that will replace the text. These are just enum name strings in
- * a TEXT column, so adding them needs no DB migration.
+ * Indexing lifecycle. PENDING -> (OCR.space) -> DONE (has text) / NO_TEXT (none) /
+ * FAILED (image couldn't be read). Stored as the enum name in a TEXT column.
  */
-enum class PhotoStatus { PENDING, DONE, FAILED, NO_TEXT, CLOUD_PENDING, CLOUD_SUBMITTED }
+enum class PhotoStatus { PENDING, DONE, FAILED, NO_TEXT }
 
 @Entity(
     tableName = "photos",
@@ -35,9 +33,6 @@ data class PhotoEntity(
     // hidden from the gallery/search and skipped by indexing. Default included.
     val included: Boolean = true,
 )
-
-/** Lightweight projection: a photo id + its stored local transcript. */
-data class PhotoText(val id: Long, val ocrText: String?)
 
 // unicode61 case-folds Cyrillic (the default `simple` tokenizer folds ASCII
 // only). remove_diacritics=1 strips accents on BOTH the indexed text and the

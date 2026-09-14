@@ -1,36 +1,24 @@
 package dev.ewoxej.gallerylens.data
 
 import android.content.Context
+import java.time.LocalDate
 
 /**
  * Small key-value settings store (app-private SharedPreferences). Holds the
- * user-entered Anthropic API key and the cloud-OCR toggle. The key lives only in
- * this app's private storage and is sent only to api.anthropic.com when cloud
- * OCR is enabled.
+ * user-entered OCR.space API key, the album filter, and the per-day request
+ * counter that keeps us under the free tier's 500-requests/day limit. The key
+ * lives only in this app's private storage and is sent only to api.ocr.space.
  */
 object Settings {
     private const val PREFS = "gallery_lens_settings"
-    private const val KEY_CLOUD_ENABLED = "cloud_ocr_enabled"
-    private const val KEY_CLOUD_ALWAYS = "cloud_ocr_always"
+    // Kept the legacy key name so an existing key survives the upgrade.
     private const val KEY_API_KEY = "anthropic_api_key"
+
+    /** OCR.space free tier: 500 requests per day per IP. */
+    const val DAILY_LIMIT = 500
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-
-    fun cloudEnabled(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_CLOUD_ENABLED, false)
-
-    fun setCloudEnabled(context: Context, value: Boolean) {
-        prefs(context).edit().putBoolean(KEY_CLOUD_ENABLED, value).apply()
-    }
-
-    /** When on, every photo is sent to Claude (not just weak local results). */
-    fun cloudAlways(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_CLOUD_ALWAYS, false)
-
-    fun setCloudAlways(context: Context, value: Boolean) {
-        prefs(context).edit().putBoolean(KEY_CLOUD_ALWAYS, value).apply()
-    }
 
     fun apiKey(context: Context): String =
         prefs(context).getString(KEY_API_KEY, "").orEmpty()
@@ -38,10 +26,6 @@ object Settings {
     fun setApiKey(context: Context, value: String) {
         prefs(context).edit().putString(KEY_API_KEY, value.trim()).apply()
     }
-
-    /** Cloud OCR is usable only when it's enabled and a key is present. */
-    fun cloudReady(context: Context): Boolean =
-        cloudEnabled(context) && apiKey(context).isNotBlank()
 
     // Album filter: the set of album (bucket) keys to index/show. null = every
     // album (the default — no filter). An empty set means "none selected".
@@ -58,16 +42,42 @@ object Settings {
         }.apply()
     }
 
-    // In-flight Claude batch id — persisted so a batch that hasn't finished when
-    // the worker stops is resumed (polled) on the next run instead of resubmitted.
-    private const val KEY_BATCH_ID = "cloud_pending_batch_id"
+    // --- Daily OCR.space request budget (resets on the local calendar day) ---
+    private const val KEY_OCR_DAY = "ocr_day"
+    private const val KEY_OCR_COUNT = "ocr_count"
 
-    fun pendingBatchId(context: Context): String? =
-        prefs(context).getString(KEY_BATCH_ID, null)?.ifBlank { null }
+    private fun today(): String = LocalDate.now().toString() // yyyy-MM-dd
 
-    fun setPendingBatchId(context: Context, id: String?) {
-        prefs(context).edit().apply {
-            if (id.isNullOrBlank()) remove(KEY_BATCH_ID) else putString(KEY_BATCH_ID, id)
-        }.apply()
+    /** Requests already spent today (0 once the calendar day rolls over). */
+    @Synchronized
+    fun ocrUsedToday(context: Context): Int {
+        val p = prefs(context)
+        return if (p.getString(KEY_OCR_DAY, null) == today()) p.getInt(KEY_OCR_COUNT, 0) else 0
+    }
+
+    fun ocrRemainingToday(context: Context): Int =
+        (DAILY_LIMIT - ocrUsedToday(context)).coerceAtLeast(0)
+
+    /** Atomically claim one request slot for today; false when the day is spent. */
+    @Synchronized
+    fun tryReserveOcrSlot(context: Context): Boolean {
+        val used = ocrUsedToday(context)
+        if (used >= DAILY_LIMIT) return false
+        writeCount(context, used + 1)
+        return true
+    }
+
+    /** Give a reserved slot back (e.g. the image couldn't be decoded — no request sent). */
+    @Synchronized
+    fun refundOcrSlot(context: Context) {
+        writeCount(context, (ocrUsedToday(context) - 1).coerceAtLeast(0))
+    }
+
+    /** The API said the daily quota is gone — burn the rest of today's budget. */
+    @Synchronized
+    fun markQuotaExhausted(context: Context) = writeCount(context, DAILY_LIMIT)
+
+    private fun writeCount(context: Context, n: Int) {
+        prefs(context).edit().putString(KEY_OCR_DAY, today()).putInt(KEY_OCR_COUNT, n).apply()
     }
 }

@@ -42,16 +42,12 @@
     <string name="cancel">Cancel</string>
 
     <!-- Cloud OCR (Claude API) -->
-    <string name="cloud_title">Cloud recognition (Claude API)</string>
-    <string name="cloud_enable">Read hard photos with Claude API</string>
-    <string name="cloud_all">Send every photo to Claude</string>
-    <string name="cloud_all_hint">Higher accuracy but more API calls — use if local OCR is consistently poor.</string>
-    <string name="cloud_key_label">Anthropic API key</string>
-    <string name="cloud_desc">When local OCR gives poor results, the photo is sent to the Claude API to read its text (stylised, blurry, or mixed-language images). Requires your own key from console.anthropic.com — usage is billed to that key. Off by default; photos leave the device only while this is on.</string>
+    <string name="ocr_title">Text recognition (OCR.space)</string>
+    <string name="ocr_key_label">OCR.space API key</string>
+    <string name="ocr_usage">Used today: %1$d / %2$d</string>
+    <string name="ocr_desc">Text is recognised by the OCR.space API. Get a free key at ocr.space — the free tier allows 500 photos per day. Larger photos are downscaled and compressed to under 1 MB before sending. When the daily limit is reached, indexing pauses and resumes automatically the next day.</string>
     <string name="action_show_key">Show key</string>
     <string name="action_hide_key">Hide key</string>
-    <string name="cloud_send_now">Send indexed photos to cloud</string>
-    <string name="cloud_send_now_desc">New photos are sent automatically; use this to re-read photos indexed before cloud OCR was turned on. Follows the mode above (all photos, or only weak results). Progress shows in the queued count above.</string>
     <string name="albums_action">Choose albums to index</string>
     <string name="albums_action_desc">Only selected albums are shown and recognised; the rest are hidden and skipped.</string>
     <string name="albums_title">Albums</string>
