@@ -8,13 +8,13 @@ import android.os.Build
 import android.provider.MediaStore
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.TimeUnit
@@ -25,8 +25,10 @@ import kotlin.math.min
 sealed interface OcrOutcome {
     /** Got a response — [result] carries the text (empty text ⇒ the photo has none). */
     data class Ok(val result: OcrResult) : OcrOutcome
-    /** Daily 500/IP (or rate) limit reached — stop for today, resume tomorrow. */
-    data object RateLimited : OcrOutcome
+    /** Rate-limited (1-at-a-time E552, or 60/hour E553) — wait [retryAfterSec] and retry. */
+    data class Throttled(val retryAfterSec: Int) : OcrOutcome
+    /** Daily 500/IP cap reached — stop for today, resume tomorrow. */
+    data object DailyLimit : OcrOutcome
     /** Network/server hiccup — leave the photo pending and retry on the next run. */
     data object Transient : OcrOutcome
     /** The image itself couldn't be decoded — give up on this one photo. */
@@ -42,16 +44,17 @@ sealed interface OcrOutcome {
 object OcrSpace {
     private const val TAG = "OcrSpace"
     private const val ENDPOINT = "https://api.ocr.space/parse/image"
-    private const val OCR_ENGINE = "3"       // 200+ languages + auto-detect
-    private const val LANGUAGE = "auto"      // per-image detection (Engine 2/3 only)
     private const val MAX_DIM = 2000         // downscale longest side to this
     private const val TARGET_BYTES = 950_000 // stay safely under the 1 MB cap
     private const val START_QUALITY = 88
     private const val MIN_QUALITY = 40
-    // Engine 3 free plan allows only ONE request at a time (HTTP 429 "E552"
-    // otherwise). We send serially; this retry just covers the rare overlap.
-    private const val MAX_ATTEMPTS = 3
-    private const val RETRY_DELAY_MS = 1500L
+    private const val OCR_ENGINE = "3"      // 200+ languages + per-image auto-detect
+    private const val LANGUAGE = "auto"     // Engine 3 detects the language itself
+    // Free-plan Engine 3 throttles are surfaced as HTTP 429 ("E552" = 1-at-a-time,
+    // "E553" = 60/hour, with a `retryAfter`). Bounds for how long we back off.
+    private const val DEFAULT_RETRY_SEC = 5
+    private const val MIN_RETRY_SEC = 3
+    private const val MAX_RETRY_SEC = 3600
 
     private val client by lazy {
         OkHttpClient.Builder()
@@ -78,29 +81,24 @@ object OcrSpace {
                         .build(),
                 )
                 .build()
-            // Retry only the concurrency 429 (null); every real outcome returns.
-            repeat(MAX_ATTEMPTS) { attempt ->
-                if (attempt > 0) delay(RETRY_DELAY_MS)
-                call(req, img.width, img.height)?.let { return@withContext it }
-            }
-            OcrOutcome.Transient // still busy after retries — leave it for later
+            call(req, img.width, img.height)
         }
 
-    /** One HTTP attempt. Returns null for the Engine-3 concurrency 429 (retry). */
-    private fun call(req: Request, w: Int, h: Int): OcrOutcome? =
+    private fun call(req: Request, w: Int, h: Int): OcrOutcome =
         runCatching {
             client.newCall(req).execute().use { resp ->
                 val s = resp.body?.string().orEmpty()
                 when {
-                    // "E552 / Rate limit exceeded for Engine 3" = too many at once.
-                    resp.code == 429 || s.contains("E552") ||
-                        s.contains("Rate limit exceeded for Engine", true) -> {
-                        Log.w(TAG, "busy (1-at-a-time) HTTP ${resp.code}"); null
-                    }
-                    // 403 (or the "upto maximum … 86400 seconds" text) = daily cap.
+                    // Daily 500/IP cap ("upto maximum … 86400 seconds", usually 403).
                     resp.code == 403 || isDailyLimit(s) -> {
                         Log.w(TAG, "daily limit HTTP ${resp.code}: ${s.take(160)}")
-                        OcrOutcome.RateLimited
+                        OcrOutcome.DailyLimit
+                    }
+                    // Throttled: E552 (1-at-a-time) or E553 (60/hour), carries retryAfter.
+                    resp.code == 429 || isThrottle(s) -> {
+                        val sec = retryAfterSec(resp, s)
+                        Log.w(TAG, "throttled ${sec}s: ${s.take(160)}")
+                        OcrOutcome.Throttled(sec)
                     }
                     !resp.isSuccessful -> {
                         Log.w(TAG, "HTTP ${resp.code}: ${s.take(160)}")
@@ -114,13 +112,25 @@ object OcrSpace {
     private fun isDailyLimit(body: String): Boolean =
         body.contains("upto maximum", true) || body.contains("86400")
 
+    private fun isThrottle(body: String): Boolean =
+        body.contains("E552") || body.contains("E553") ||
+            body.contains("Rate limit exceeded", true)
+
+    /** Seconds to wait before retrying, from the JSON `retryAfter` or `Retry-After` header. */
+    private fun retryAfterSec(resp: Response, body: String): Int {
+        val fromBody = runCatching { JSONObject(body).optInt("retryAfter", 0) }.getOrDefault(0)
+        val fromHeader = resp.header("Retry-After")?.trim()?.toIntOrNull() ?: 0
+        val sec = max(fromBody, fromHeader)
+        return if (sec > 0) sec.coerceIn(MIN_RETRY_SEC, MAX_RETRY_SEC) else DEFAULT_RETRY_SEC
+    }
+
     private fun parse(json: String, w: Int, h: Int): OcrOutcome {
         val obj = runCatching { JSONObject(json) }.getOrNull() ?: return OcrOutcome.Transient
         if (obj.optBoolean("IsErroredOnProcessing")) {
             val msg = obj.optString("ErrorMessage") + " " + obj.optString("ErrorDetails")
             if (isDailyLimit(msg)) {
                 Log.w(TAG, "daily limit: ${msg.take(160)}")
-                return OcrOutcome.RateLimited
+                return OcrOutcome.DailyLimit
             }
             // A per-image engine error (e.g. unreadable) — treat as "no text found".
             Log.w(TAG, "processing error: ${msg.take(160)}")

@@ -22,6 +22,7 @@ import dev.ewoxej.gallerylens.data.Settings
 import dev.ewoxej.gallerylens.ocr.OcrLayout
 import dev.ewoxej.gallerylens.ocr.OcrOutcome
 import dev.ewoxej.gallerylens.ocr.OcrSpace
+import kotlinx.coroutines.delay
 import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -50,8 +51,9 @@ class IndexingWorker(context: Context, params: WorkerParameters) :
         runCatching { setForeground(foregroundInfo()) }
             .onFailure { Log.w(TAG, "setForeground failed; indexing without it", it) }
 
-        // Engine 3's free plan permits only ONE request at a time, so recognise
-        // serially. Each processed request counts against the 500/day budget.
+        // Engine 3's free plan permits only ONE request at a time and 60/hour, so
+        // recognise serially and pace ourselves off the API's retryAfter. Each
+        // processed request counts against the 500/day budget.
         var quotaHit = false
         var consecutiveFails = 0
         drain@ while (!isStopped) {
@@ -61,25 +63,32 @@ class IndexingWorker(context: Context, params: WorkerParameters) :
             for (photo in batch) {
                 if (isStopped) break@drain
                 if (Settings.ocrRemainingToday(applicationContext) <= 0) { quotaHit = true; break@drain }
-                when (val o = OcrSpace.recognize(applicationContext, photo.uri, apiKey)) {
-                    is OcrOutcome.Ok -> {
-                        consecutiveFails = 0
-                        Settings.incrementOcrToday(applicationContext)
-                        dao.applyOcrResult(
-                            id = photo.id,
-                            text = o.result.text,
-                            searchText = o.result.searchText,
-                            blocksJson = OcrLayout.toJson(o.result.blocks),
-                            w = o.result.width,
-                            h = o.result.height,
-                            atMs = System.currentTimeMillis(),
-                        )
+                // Retry the SAME photo while the API throttles us (E552/E553).
+                photo@ while (!isStopped) {
+                    when (val o = OcrSpace.recognize(applicationContext, photo.uri, apiKey)) {
+                        is OcrOutcome.Ok -> {
+                            consecutiveFails = 0
+                            Settings.incrementOcrToday(applicationContext)
+                            dao.applyOcrResult(
+                                id = photo.id,
+                                text = o.result.text,
+                                searchText = o.result.searchText,
+                                blocksJson = OcrLayout.toJson(o.result.blocks),
+                                w = o.result.width,
+                                h = o.result.height,
+                                atMs = System.currentTimeMillis(),
+                            )
+                            break@photo
+                        }
+                        // Rate-limited: wait the API's retryAfter (capped) and re-try
+                        // this photo — the request wasn't processed, so nothing counts.
+                        is OcrOutcome.Throttled -> delay(o.retryAfterSec.coerceAtMost(MAX_WAIT_SEC) * 1000L)
+                        OcrOutcome.DailyLimit -> { Settings.markQuotaExhausted(applicationContext); quotaHit = true; break@drain }
+                        OcrOutcome.Undecodable -> { dao.setStatus(photo.id, PhotoStatus.FAILED, null, System.currentTimeMillis()); break@photo }
+                        // A timeout/hiccup: skip this photo (stays PENDING) and move
+                        // on. Only stop once many fail in a row (network down).
+                        OcrOutcome.Transient -> { if (++consecutiveFails >= MAX_CONSECUTIVE_FAILS) break@drain else break@photo }
                     }
-                    OcrOutcome.RateLimited -> { Settings.markQuotaExhausted(applicationContext); quotaHit = true; break@drain }
-                    OcrOutcome.Undecodable -> dao.setStatus(photo.id, PhotoStatus.FAILED, null, System.currentTimeMillis())
-                    // A single timeout/hiccup: skip this photo (stays PENDING) and
-                    // keep going. Only stop once many fail in a row (network down).
-                    OcrOutcome.Transient -> if (++consecutiveFails >= MAX_CONSECUTIVE_FAILS) break@drain
                 }
             }
         }
@@ -110,6 +119,8 @@ class IndexingWorker(context: Context, params: WorkerParameters) :
         private const val BATCH = 40
         // Stop the run after this many back-to-back failures (network likely down).
         private const val MAX_CONSECUTIVE_FAILS = 5
+        // Cap a single in-run wait for a throttle backoff (keeps it responsive).
+        private const val MAX_WAIT_SEC = 120
         const val WORK_NAME = "photo-indexing"
         private const val RESUME_WORK_NAME = "photo-indexing-resume"
         const val CHANNEL_ID = "indexing"
