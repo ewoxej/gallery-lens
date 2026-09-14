@@ -34,6 +34,10 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # Drop the obsolete "tools" package (removed from recent cmdline-tools,
+          # which makes the action's default `tools platform-tools` fail).
+          packages: platform-tools
 
       - name: Install SDK components
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
