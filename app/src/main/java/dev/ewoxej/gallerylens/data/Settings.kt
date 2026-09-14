@@ -58,20 +58,9 @@ object Settings {
     fun ocrRemainingToday(context: Context): Int =
         (DAILY_LIMIT - ocrUsedToday(context)).coerceAtLeast(0)
 
-    /** Atomically claim one request slot for today; false when the day is spent. */
+    /** Count one request that the API actually processed against today's budget. */
     @Synchronized
-    fun tryReserveOcrSlot(context: Context): Boolean {
-        val used = ocrUsedToday(context)
-        if (used >= DAILY_LIMIT) return false
-        writeCount(context, used + 1)
-        return true
-    }
-
-    /** Give a reserved slot back (e.g. the image couldn't be decoded — no request sent). */
-    @Synchronized
-    fun refundOcrSlot(context: Context) {
-        writeCount(context, (ocrUsedToday(context) - 1).coerceAtLeast(0))
-    }
+    fun incrementOcrToday(context: Context) = writeCount(context, ocrUsedToday(context) + 1)
 
     /** The API said the daily quota is gone — burn the rest of today's budget. */
     @Synchronized

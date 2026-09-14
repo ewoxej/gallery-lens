@@ -8,6 +8,7 @@ import android.os.Build
 import android.provider.MediaStore
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
@@ -47,11 +48,17 @@ object OcrSpace {
     private const val TARGET_BYTES = 950_000 // stay safely under the 1 MB cap
     private const val START_QUALITY = 88
     private const val MIN_QUALITY = 40
+    // Engine 3 free plan allows only ONE request at a time (HTTP 429 "E552"
+    // otherwise). We send serially; this retry just covers the rare overlap.
+    private const val MAX_ATTEMPTS = 3
+    private const val RETRY_DELAY_MS = 1500L
 
     private val client by lazy {
         OkHttpClient.Builder()
             .connectTimeout(20, TimeUnit.SECONDS)
-            .callTimeout(90, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS) // uploading up to ~1 MB
+            .readTimeout(60, TimeUnit.SECONDS)  // Engine 3 can be slow (default 10s is too short)
+            .callTimeout(120, TimeUnit.SECONDS)
             .build()
     }
     private val JPEG = "image/jpeg".toMediaType()
@@ -59,42 +66,60 @@ object OcrSpace {
     suspend fun recognize(context: Context, uri: String, apiKey: String): OcrOutcome =
         withContext(Dispatchers.IO) {
             val img = compress(context, Uri.parse(uri)) ?: return@withContext OcrOutcome.Undecodable
-            val body = MultipartBody.Builder().setType(MultipartBody.FORM)
-                .addFormDataPart("file", "photo.jpg", img.bytes.toRequestBody(JPEG))
-                .addFormDataPart("language", LANGUAGE)
-                .addFormDataPart("OCREngine", OCR_ENGINE)
-                .addFormDataPart("isOverlayRequired", "true")
-                .addFormDataPart("scale", "true")
-                .build()
             val req = Request.Builder().url(ENDPOINT)
                 .addHeader("apikey", apiKey)
-                .post(body)
+                .post(
+                    MultipartBody.Builder().setType(MultipartBody.FORM)
+                        .addFormDataPart("file", "photo.jpg", img.bytes.toRequestBody(JPEG))
+                        .addFormDataPart("language", LANGUAGE)
+                        .addFormDataPart("OCREngine", OCR_ENGINE)
+                        .addFormDataPart("isOverlayRequired", "true")
+                        .addFormDataPart("scale", "true")
+                        .build(),
+                )
                 .build()
-            runCatching {
-                client.newCall(req).execute().use { resp ->
-                    val s = resp.body?.string().orEmpty()
-                    when {
-                        // 403/429 is the daily 500/IP quota (or rate) limit.
-                        resp.code == 403 || resp.code == 429 -> {
-                            Log.w(TAG, "rate limited HTTP ${resp.code}: ${s.take(160)}")
-                            OcrOutcome.RateLimited
-                        }
-                        !resp.isSuccessful -> {
-                            Log.w(TAG, "HTTP ${resp.code}: ${s.take(160)}")
-                            OcrOutcome.Transient
-                        }
-                        else -> parse(s, img.width, img.height)
-                    }
-                }
-            }.getOrElse { Log.w(TAG, "request failed", it); OcrOutcome.Transient }
+            // Retry only the concurrency 429 (null); every real outcome returns.
+            repeat(MAX_ATTEMPTS) { attempt ->
+                if (attempt > 0) delay(RETRY_DELAY_MS)
+                call(req, img.width, img.height)?.let { return@withContext it }
+            }
+            OcrOutcome.Transient // still busy after retries — leave it for later
         }
+
+    /** One HTTP attempt. Returns null for the Engine-3 concurrency 429 (retry). */
+    private fun call(req: Request, w: Int, h: Int): OcrOutcome? =
+        runCatching {
+            client.newCall(req).execute().use { resp ->
+                val s = resp.body?.string().orEmpty()
+                when {
+                    // "E552 / Rate limit exceeded for Engine 3" = too many at once.
+                    resp.code == 429 || s.contains("E552") ||
+                        s.contains("Rate limit exceeded for Engine", true) -> {
+                        Log.w(TAG, "busy (1-at-a-time) HTTP ${resp.code}"); null
+                    }
+                    // 403 (or the "upto maximum … 86400 seconds" text) = daily cap.
+                    resp.code == 403 || isDailyLimit(s) -> {
+                        Log.w(TAG, "daily limit HTTP ${resp.code}: ${s.take(160)}")
+                        OcrOutcome.RateLimited
+                    }
+                    !resp.isSuccessful -> {
+                        Log.w(TAG, "HTTP ${resp.code}: ${s.take(160)}")
+                        OcrOutcome.Transient
+                    }
+                    else -> parse(s, w, h)
+                }
+            }
+        }.getOrElse { Log.w(TAG, "request failed", it); OcrOutcome.Transient }
+
+    private fun isDailyLimit(body: String): Boolean =
+        body.contains("upto maximum", true) || body.contains("86400")
 
     private fun parse(json: String, w: Int, h: Int): OcrOutcome {
         val obj = runCatching { JSONObject(json) }.getOrNull() ?: return OcrOutcome.Transient
         if (obj.optBoolean("IsErroredOnProcessing")) {
             val msg = obj.optString("ErrorMessage") + " " + obj.optString("ErrorDetails")
-            if (msg.contains("limit", true) || msg.contains("upto maximum", true) || msg.contains("429")) {
-                Log.w(TAG, "quota error: ${msg.take(160)}")
+            if (isDailyLimit(msg)) {
+                Log.w(TAG, "daily limit: ${msg.take(160)}")
                 return OcrOutcome.RateLimited
             }
             // A per-image engine error (e.g. unreadable) — treat as "no text found".

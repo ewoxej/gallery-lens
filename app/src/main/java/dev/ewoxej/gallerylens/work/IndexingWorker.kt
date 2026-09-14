@@ -22,11 +22,6 @@ import dev.ewoxej.gallerylens.data.Settings
 import dev.ewoxej.gallerylens.ocr.OcrLayout
 import dev.ewoxej.gallerylens.ocr.OcrOutcome
 import dev.ewoxej.gallerylens.ocr.OcrSpace
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -55,48 +50,37 @@ class IndexingWorker(context: Context, params: WorkerParameters) :
         runCatching { setForeground(foregroundInfo()) }
             .onFailure { Log.w(TAG, "setForeground failed; indexing without it", it) }
 
+        // Engine 3's free plan permits only ONE request at a time, so recognise
+        // serially. Each processed request counts against the 500/day budget.
         var quotaHit = false
-        coroutineScope {
-            val gate = Semaphore(CONCURRENCY)
-            while (!isStopped) {
-                if (Settings.ocrRemainingToday(applicationContext) <= 0) { quotaHit = true; break }
-                val batch = dao.nextPending(BATCH)
-                if (batch.isEmpty()) break
-
-                val outcomes = batch.map { photo ->
-                    async {
-                        gate.withPermit {
-                            if (isStopped) return@withPermit null
-                            // Reserve a daily slot up-front so parallel workers can
-                            // never overshoot the 500/day cap.
-                            if (!Settings.tryReserveOcrSlot(applicationContext)) return@withPermit OcrOutcome.RateLimited
-                            val o = OcrSpace.recognize(applicationContext, photo.uri, apiKey)
-                            when (o) {
-                                is OcrOutcome.Ok -> dao.applyOcrResult(
-                                    id = photo.id,
-                                    text = o.result.text,
-                                    searchText = o.result.searchText,
-                                    blocksJson = OcrLayout.toJson(o.result.blocks),
-                                    w = o.result.width,
-                                    h = o.result.height,
-                                    atMs = System.currentTimeMillis(),
-                                )
-                                OcrOutcome.Undecodable -> {
-                                    Settings.refundOcrSlot(applicationContext) // no request was sent
-                                    dao.setStatus(photo.id, PhotoStatus.FAILED, null, System.currentTimeMillis())
-                                }
-                                OcrOutcome.RateLimited -> Settings.markQuotaExhausted(applicationContext)
-                                OcrOutcome.Transient -> Unit // leave PENDING, retry next run
-                            }
-                            o
-                        }
+        var consecutiveFails = 0
+        drain@ while (!isStopped) {
+            if (Settings.ocrRemainingToday(applicationContext) <= 0) { quotaHit = true; break }
+            val batch = dao.nextPending(BATCH)
+            if (batch.isEmpty()) break
+            for (photo in batch) {
+                if (isStopped) break@drain
+                if (Settings.ocrRemainingToday(applicationContext) <= 0) { quotaHit = true; break@drain }
+                when (val o = OcrSpace.recognize(applicationContext, photo.uri, apiKey)) {
+                    is OcrOutcome.Ok -> {
+                        consecutiveFails = 0
+                        Settings.incrementOcrToday(applicationContext)
+                        dao.applyOcrResult(
+                            id = photo.id,
+                            text = o.result.text,
+                            searchText = o.result.searchText,
+                            blocksJson = OcrLayout.toJson(o.result.blocks),
+                            w = o.result.width,
+                            h = o.result.height,
+                            atMs = System.currentTimeMillis(),
+                        )
                     }
-                }.awaitAll().filterNotNull()
-
-                if (outcomes.any { it is OcrOutcome.RateLimited }) { quotaHit = true; break }
-                // A network error means the connection is down — stop, resume later.
-                if (outcomes.any { it is OcrOutcome.Transient }) break
-                if (outcomes.isEmpty()) break
+                    OcrOutcome.RateLimited -> { Settings.markQuotaExhausted(applicationContext); quotaHit = true; break@drain }
+                    OcrOutcome.Undecodable -> dao.setStatus(photo.id, PhotoStatus.FAILED, null, System.currentTimeMillis())
+                    // A single timeout/hiccup: skip this photo (stays PENDING) and
+                    // keep going. Only stop once many fail in a row (network down).
+                    OcrOutcome.Transient -> if (++consecutiveFails >= MAX_CONSECUTIVE_FAILS) break@drain
+                }
             }
         }
 
@@ -122,9 +106,10 @@ class IndexingWorker(context: Context, params: WorkerParameters) :
 
     companion object {
         private const val TAG = "IndexingWorker"
-        // Photos pulled per loop; a few sent concurrently (no batch API exists).
+        // Photos pulled from the DB per loop (recognised one at a time).
         private const val BATCH = 40
-        private const val CONCURRENCY = 5
+        // Stop the run after this many back-to-back failures (network likely down).
+        private const val MAX_CONSECUTIVE_FAILS = 5
         const val WORK_NAME = "photo-indexing"
         private const val RESUME_WORK_NAME = "photo-indexing-resume"
         const val CHANNEL_ID = "indexing"
