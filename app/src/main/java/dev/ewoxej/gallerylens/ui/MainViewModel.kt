@@ -94,9 +94,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun openAlbum(bucketKey: String) { _viewMode.value = ViewMode.ALBUMS; _openAlbum.value = bucketKey }
 
     /** Toggle a photo's ignore flag (ignored photos are hidden + not indexed). */
-    fun setIgnored(id: Long, ignored: Boolean) {
+    fun setIgnored(id: Long, ignored: Boolean) = setIgnored(listOf(id), ignored)
+
+    /** Ignore (or un-ignore) several photos at once. */
+    fun setIgnored(ids: Collection<Long>, ignored: Boolean) {
+        if (ids.isEmpty()) return
         viewModelScope.launch {
-            withContext(Dispatchers.IO) { dao.setIgnored(id, ignored) }
+            withContext(Dispatchers.IO) { ids.forEach { dao.setIgnored(it, ignored) } }
             refresh()
         }
     }

@@ -57,18 +57,18 @@ class IndexingWorker(context: Context, params: WorkerParameters) :
         var quotaHit = false
         var consecutiveFails = 0
         drain@ while (!isStopped) {
-            if (Settings.ocrRemainingToday(applicationContext) <= 0) { quotaHit = true; break }
+            if (Settings.ocrRemaining(applicationContext) <= 0) { quotaHit = true; break }
             val batch = dao.nextPending(BATCH)
             if (batch.isEmpty()) break
             for (photo in batch) {
                 if (isStopped) break@drain
-                if (Settings.ocrRemainingToday(applicationContext) <= 0) { quotaHit = true; break@drain }
+                if (Settings.ocrRemaining(applicationContext) <= 0) { quotaHit = true; break@drain }
                 // Retry the SAME photo while the API throttles us (E552/E553).
                 photo@ while (!isStopped) {
                     when (val o = OcrSpace.recognize(applicationContext, photo.uri, apiKey)) {
                         is OcrOutcome.Ok -> {
                             consecutiveFails = 0
-                            Settings.incrementOcrToday(applicationContext)
+                            Settings.recordOcrRequest(applicationContext)
                             dao.applyOcrResult(
                                 id = photo.id,
                                 text = o.result.text,

@@ -47,10 +47,10 @@ jobs:
         run: |
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             V="${GITHUB_REF#refs/tags/}"; V="${V#v}"
-            TAG="${GITHUB_REF#refs/tags/}"     # real release, e.g. v0.2.0
+            TAG="${GITHUB_REF#refs/tags/}"     # pushed tag, e.g. v0.2.0
           else
             V="$(head -n1 "${GITHUB_WORKSPACE}/VERSION" | tr -d '[:space:]')"
-            TAG="dev"                          # rolling prerelease for manual runs
+            TAG="v$V"                          # version from VERSION, e.g. v1.0.0
           fi
           echo "name=$V" >> "$GITHUB_OUTPUT"
           echo "code=${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
@@ -78,20 +78,19 @@ jobs:
           path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
 
-      # For the rolling "dev" prerelease, wipe the previous release AND its tag
-      # first, so the new run fully replaces it (old assets gone, tag moved to
-      # this commit). Without this, updating an existing release can leave stale
-      # assets / a stale tag. Only for manual runs; real v* tags are never touched.
-      - name: Reset previous dev prerelease
+      # Re-running with the same VERSION replaces that version's release cleanly:
+      # wipe the existing release AND its tag first (old assets gone, tag moved to
+      # this commit), so there are never stale assets. Only for manual runs; a
+      # pushed v* tag is never deleted. Bumping VERSION just makes a new tag.
+      - name: Replace existing release for this version
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release delete "${{ steps.ver.outputs.tag }}" --cleanup-tag --yes || true
 
-      # Publishes a proper GitHub Release with the APKs attached (direct,
-      # shareable download links) — for tag pushes AND manual runs. Manual runs
-      # go to the "dev" prerelease (freshly recreated above); pushing a v* tag
-      # cuts a real, non-prerelease release.
+      # Publishes a GitHub Release tagged with the version (from VERSION on manual
+      # runs, or the pushed tag), with the signed APKs attached as direct,
+      # shareable download links.
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -100,4 +99,3 @@ jobs:
           name: Gallery Lens ${{ steps.ver.outputs.name }}
           files: app/build/outputs/apk/release/*.apk
           generate_release_notes: true
-          prerelease: ${{ !startsWith(github.ref, 'refs/tags/') }}

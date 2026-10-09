@@ -45,6 +45,7 @@
     <string name="ocr_title">Text recognition (OCR.space)</string>
     <string name="ocr_key_label">OCR.space API key</string>
     <string name="ocr_usage">Used today: %1$d / %2$d</string>
+    <string name="ocr_usage_month">Used this month: %1$d / %2$d (estimate)</string>
     <string name="ocr_desc">Text is recognised by the OCR.space API. Get a free key at ocr.space — the free tier allows 500 photos per day. Larger photos are downscaled and compressed to under 1 MB before sending. When the daily limit is reached, indexing pauses and resumes automatically the next day.</string>
     <string name="action_show_key">Show key</string>
     <string name="action_hide_key">Hide key</string>

@@ -127,8 +127,9 @@ private fun OcrSpaceSection() {
     val context = LocalContext.current
     var apiKey by remember { mutableStateOf(Settings.apiKey(context)) }
     var showKey by remember { mutableStateOf(false) }
-    // Snapshot of today's usage, read when the screen opens.
+    // Snapshot of usage, read when the screen opens.
     val usedToday = remember { Settings.ocrUsedToday(context) }
+    val usedThisMonth = remember { Settings.ocrUsedThisMonth(context) }
 
     Text(stringResource(R.string.ocr_title), style = MaterialTheme.typography.titleMedium)
 
@@ -153,6 +154,11 @@ private fun OcrSpaceSection() {
 
     Text(
         stringResource(R.string.ocr_usage, usedToday, Settings.DAILY_LIMIT),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.primary,
+    )
+    Text(
+        stringResource(R.string.ocr_usage_month, usedThisMonth, Settings.MONTHLY_LIMIT),
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.primary,
     )

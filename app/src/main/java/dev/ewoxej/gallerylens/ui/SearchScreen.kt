@@ -1,7 +1,10 @@
 package dev.ewoxej.gallerylens.ui
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,8 +29,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
@@ -38,6 +48,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -49,14 +60,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import android.widget.Toast
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import dev.ewoxej.gallerylens.R
@@ -68,6 +84,7 @@ import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun SearchScreen(vm: MainViewModel, onOpen: (Int) -> Unit, onOpenSettings: () -> Unit) {
     val query by vm.query.collectAsStateWithLifecycle()
@@ -79,45 +96,70 @@ fun SearchScreen(vm: MainViewModel, onOpen: (Int) -> Unit, onOpenSettings: () ->
     val albums by vm.albums.collectAsStateWithLifecycle()
     val gridState = rememberLazyGridState()
     val unknownAlbum = stringResource(R.string.album_unknown)
+    val context = LocalContext.current
 
     val inAlbumList = viewMode == ViewMode.ALBUMS && openAlbum == null
 
+    // Multi-select in the photo grid (long-press to start, tap to add/remove).
+    var selected by remember { mutableStateOf(emptySet<Long>()) }
+    val selectionMode = selected.isNotEmpty()
+    var pathToShow by remember { mutableStateOf<String?>(null) }
+    BackHandler(enabled = selectionMode) { selected = emptySet() }
+    fun toggle(id: Long) { selected = if (id in selected) selected - id else selected + id }
+    fun selectedUris() = results.filter { it.id in selected }.map { it.uri }
+
     Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
-        ScopeBar(
-            viewMode = viewMode,
-            openAlbum = openAlbum,
-            albumTitle = openAlbum?.let { if (it.isEmpty()) unknownAlbum else it }.orEmpty(),
-            onlyWithText = onlyWithText,
-            showFilter = !inAlbumList && query.isBlank(),
-            onAllPhotos = vm::showAllPhotos,
-            onAlbums = vm::showAlbums,
-            onBackToAlbums = vm::showAlbums,
-            onToggleFilter = { vm.setOnlyWithText(!onlyWithText) },
-        )
+        if (selectionMode) {
+            SelectionBar(
+                count = selected.size,
+                onClose = { selected = emptySet() },
+                onShare = { shareImages(context, selectedUris()) },
+                onCopy = {
+                    copyImages(context, selectedUris())
+                    Toast.makeText(context, context.getString(R.string.image_copied), Toast.LENGTH_SHORT).show()
+                },
+                onPath = if (selected.size == 1) {
+                    { pathToShow = filePath(context, selectedUris().first()) }
+                } else null,
+                onIgnore = { vm.setIgnored(selected, true); selected = emptySet() },
+            )
+        } else {
+            ScopeBar(
+                viewMode = viewMode,
+                openAlbum = openAlbum,
+                albumTitle = openAlbum?.let { if (it.isEmpty()) unknownAlbum else it }.orEmpty(),
+                onlyWithText = onlyWithText,
+                showFilter = !inAlbumList && query.isBlank(),
+                onAllPhotos = vm::showAllPhotos,
+                onAlbums = vm::showAlbums,
+                onBackToAlbums = vm::showAlbums,
+                onToggleFilter = { vm.setOnlyWithText(!onlyWithText) },
+            )
 
-        OutlinedTextField(
-            value = query,
-            onValueChange = vm::onQueryChange,
-            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-            trailingIcon = {
-                IconButton(onClick = onOpenSettings) {
-                    Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.action_settings))
+            OutlinedTextField(
+                value = query,
+                onValueChange = vm::onQueryChange,
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                trailingIcon = {
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.action_settings))
+                    }
+                },
+                placeholder = { Text(stringResource(R.string.search_placeholder)) },
+                singleLine = true,
+            )
+
+            if (status.isIndexing) {
+                val progress = if (status.total > 0) status.done.toFloat() / status.total else 0f
+                Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                    LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+                    Text(
+                        stringResource(R.string.indexing_progress, status.done, status.total),
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
                 }
-            },
-            placeholder = { Text(stringResource(R.string.search_placeholder)) },
-            singleLine = true,
-        )
-
-        if (status.isIndexing) {
-            val progress = if (status.total > 0) status.done.toFloat() / status.total else 0f
-            Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-                LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
-                Text(
-                    stringResource(R.string.indexing_progress, status.done, status.total),
-                    style = MaterialTheme.typography.labelMedium,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
             }
         }
 
@@ -153,7 +195,14 @@ fun SearchScreen(vm: MainViewModel, onOpen: (Int) -> Unit, onOpenSettings: () ->
                     ) { item ->
                         when (item) {
                             is GridItem.Header -> MonthHeader(item.label)
-                            is GridItem.Cell -> PhotoCell(item.photo) { onOpen(item.photoIndex) }
+                            is GridItem.Cell -> PhotoCell(
+                                photo = item.photo,
+                                selected = item.photo.id in selected,
+                                onClick = {
+                                    if (selectionMode) toggle(item.photo.id) else onOpen(item.photoIndex)
+                                },
+                                onLongClick = { toggle(item.photo.id) },
+                            )
                         }
                     }
                 }
@@ -164,6 +213,61 @@ fun SearchScreen(vm: MainViewModel, onOpen: (Int) -> Unit, onOpenSettings: () ->
                     modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
                 )
             }
+        }
+    }
+
+    pathToShow?.let { path ->
+        val clipboard = LocalClipboardManager.current
+        AlertDialog(
+            onDismissRequest = { pathToShow = null },
+            title = { Text(stringResource(R.string.action_show_path)) },
+            text = { Text(path, style = MaterialTheme.typography.bodyMedium) },
+            confirmButton = {
+                TextButton(onClick = {
+                    clipboard.setText(AnnotatedString(path))
+                    Toast.makeText(context, context.getString(R.string.path_copied), Toast.LENGTH_SHORT).show()
+                    pathToShow = null
+                }) { Text(stringResource(R.string.action_copy)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pathToShow = null }) { Text(stringResource(R.string.close)) }
+            },
+        )
+    }
+}
+
+/** Selection action bar shown in place of the scope row while photos are selected. */
+@Composable
+private fun SelectionBar(
+    count: Int,
+    onClose: () -> Unit,
+    onShare: () -> Unit,
+    onCopy: () -> Unit,
+    onPath: (() -> Unit)?,
+    onIgnore: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onClose) {
+            Icon(Icons.Default.Close, contentDescription = stringResource(R.string.action_back))
+        }
+        Text("$count", style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.weight(1f))
+        IconButton(onClick = onShare) {
+            Icon(Icons.Default.Share, contentDescription = stringResource(R.string.action_share))
+        }
+        IconButton(onClick = onCopy) {
+            Icon(Icons.Default.ContentCopy, contentDescription = stringResource(R.string.action_copy_image))
+        }
+        if (onPath != null) {
+            IconButton(onClick = onPath) {
+                Icon(Icons.Default.Info, contentDescription = stringResource(R.string.action_show_path))
+            }
+        }
+        IconButton(onClick = onIgnore) {
+            Icon(Icons.Default.VisibilityOff, contentDescription = stringResource(R.string.action_ignore_photo))
         }
     }
 }
@@ -325,17 +429,31 @@ private fun MonthHeader(label: String) {
     )
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun PhotoCell(photo: PhotoEntity, onOpen: () -> Unit) {
-    AsyncImage(
-        model = photo.uri,
-        contentDescription = photo.ocrText?.take(60),
-        modifier = Modifier
+private fun PhotoCell(photo: PhotoEntity, selected: Boolean, onClick: () -> Unit, onLongClick: () -> Unit) {
+    Box(
+        Modifier
             .aspectRatio(1f)
             .clip(RoundedCornerShape(8.dp))
-            .clickable { onOpen() },
-        contentScale = ContentScale.Crop,
-    )
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
+    ) {
+        AsyncImage(
+            model = photo.uri,
+            contentDescription = photo.ocrText?.take(60),
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop,
+        )
+        if (selected) {
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)))
+            Icon(
+                Icons.Default.CheckCircle,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(22.dp),
+            )
+        }
+    }
 }
 
 /**

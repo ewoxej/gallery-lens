@@ -1,12 +1,7 @@
 package dev.ewoxej.gallerylens.ui
 
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
-import android.content.Intent
-import android.net.Uri
-import android.provider.MediaStore
 import android.widget.Toast
+import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -43,12 +38,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -63,6 +61,7 @@ import dev.ewoxej.gallerylens.R
 import dev.ewoxej.gallerylens.data.PhotoEntity
 import dev.ewoxej.gallerylens.ocr.OcrBlock
 import dev.ewoxej.gallerylens.ocr.OcrLayout
+import kotlinx.coroutines.launch
 
 @Composable
 fun PhotoPagerScreen(vm: MainViewModel, startIndex: Int, onClose: () -> Unit) {
@@ -71,6 +70,7 @@ fun PhotoPagerScreen(vm: MainViewModel, startIndex: Int, onClose: () -> Unit) {
     if (photos.isEmpty()) { onClose(); return }
 
     val context = LocalContext.current
+    val density = LocalDensity.current
     val start = startIndex.coerceIn(0, photos.size - 1)
     val pagerState = rememberPagerState(initialPage = start, pageCount = { photos.size })
     var showText by remember { mutableStateOf(false) }
@@ -79,38 +79,53 @@ fun PhotoPagerScreen(vm: MainViewModel, startIndex: Int, onClose: () -> Unit) {
 
     val current = photos.getOrNull(pagerState.currentPage)
 
+    // Swipe-down-to-dismiss: the photo slides down and fades as you drag.
+    val scope = rememberCoroutineScope()
+    val offsetY = remember { Animatable(0f) }
+    val dismissPx = with(density) { 180.dp.toPx() }
+    val fadePx = with(density) { 520.dp.toPx() }
+    val progress = (offsetY.value / fadePx).coerceIn(0f, 1f)
+
     Box(
         Modifier
             .fillMaxSize()
-            .background(Color.Black)
-            // Swipe down to dismiss (horizontal swipes stay with the pager).
-            .pointerInput(Unit) {
-                var dragged = 0f
-                val threshold = 160.dp.toPx()
-                detectVerticalDragGestures(
-                    onDragStart = { dragged = 0f },
-                    onVerticalDrag = { _, dy -> dragged += dy },
-                    onDragEnd = { if (dragged > threshold) onClose() },
-                    onDragCancel = { dragged = 0f },
-                )
-            },
+            .drawBehind { drawRect(Color.Black, alpha = 1f - progress * 0.85f) },
     ) {
-        HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
-            PhotoPage(
-                photo = photos[page],
-                terms = if (showText) queryTerms(query) else emptyList(),
-                showOverlay = showText,
-            )
-        }
+        // Moving/fading content: the pager + its text panel.
+        Box(
+            Modifier
+                .fillMaxSize()
+                .graphicsLayer { translationY = offsetY.value; alpha = 1f - progress * 0.75f }
+                .pointerInput(Unit) {
+                    detectVerticalDragGestures(
+                        onVerticalDrag = { _, dy ->
+                            scope.launch { offsetY.snapTo((offsetY.value + dy).coerceAtLeast(0f)) }
+                        },
+                        onDragEnd = {
+                            if (offsetY.value > dismissPx) onClose()
+                            else scope.launch { offsetY.animateTo(0f) }
+                        },
+                        onDragCancel = { scope.launch { offsetY.animateTo(0f) } },
+                    )
+                },
+        ) {
+            HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
+                PhotoPage(
+                    photo = photos[page],
+                    terms = if (showText) queryTerms(query) else emptyList(),
+                    showOverlay = showText,
+                )
+            }
 
-        if (showText) {
-            val text = current?.ocrText
-            if (!text.isNullOrBlank()) {
-                TextPanel(text, Modifier.align(Alignment.BottomCenter))
+            if (showText) {
+                val text = current?.ocrText
+                if (!text.isNullOrBlank()) {
+                    TextPanel(text, Modifier.align(Alignment.BottomCenter))
+                }
             }
         }
 
-        // Back button, top-left.
+        // Back button, top-left (stays put while the photo drags).
         IconButton(
             onClick = onClose,
             modifier = Modifier
@@ -123,9 +138,7 @@ fun PhotoPagerScreen(vm: MainViewModel, startIndex: Int, onClose: () -> Unit) {
         }
 
         // Actions, top-right: text toggle, share, overflow menu.
-        Row(
-            modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),
-        ) {
+        Row(modifier = Modifier.align(Alignment.TopEnd).padding(12.dp)) {
             CircleAction(
                 icon = Icons.AutoMirrored.Filled.Subject,
                 description = stringResource(R.string.action_show_text),
@@ -135,7 +148,7 @@ fun PhotoPagerScreen(vm: MainViewModel, startIndex: Int, onClose: () -> Unit) {
             CircleAction(
                 icon = Icons.Default.Share,
                 description = stringResource(R.string.action_share),
-                onClick = { current?.let { shareImage(context, it.uri) } },
+                onClick = { current?.let { shareImages(context, listOf(it.uri)) } },
             )
             Box {
                 CircleAction(
@@ -148,22 +161,19 @@ fun PhotoPagerScreen(vm: MainViewModel, startIndex: Int, onClose: () -> Unit) {
                         text = { Text(stringResource(R.string.action_copy_image)) },
                         onClick = {
                             menuOpen = false
-                            current?.let { copyImage(context, it.uri) }
+                            current?.let {
+                                copyImages(context, listOf(it.uri))
+                                Toast.makeText(context, context.getString(R.string.image_copied), Toast.LENGTH_SHORT).show()
+                            }
                         },
                     )
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.action_show_path)) },
-                        onClick = {
-                            menuOpen = false
-                            current?.let { pathToShow = filePath(context, it.uri) }
-                        },
+                        onClick = { menuOpen = false; current?.let { pathToShow = filePath(context, it.uri) } },
                     )
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.action_ignore_photo)) },
-                        onClick = {
-                            menuOpen = false
-                            current?.let { vm.setIgnored(it.id, true); onClose() }
-                        },
+                        onClick = { menuOpen = false; current?.let { vm.setIgnored(it.id, true); onClose() } },
                     )
                 }
             }
@@ -206,44 +216,6 @@ private fun CircleAction(
     ) {
         Icon(icon, contentDescription = description, tint = tint)
     }
-}
-
-private fun shareImage(context: Context, uri: String) {
-    val send = Intent(Intent.ACTION_SEND).apply {
-        type = "image/*"
-        putExtra(Intent.EXTRA_STREAM, Uri.parse(uri))
-        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    }
-    context.startActivity(Intent.createChooser(send, null))
-}
-
-private fun copyImage(context: Context, uri: String) {
-    val clip = ClipData.newUri(context.contentResolver, "image", Uri.parse(uri))
-    context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(clip)
-    Toast.makeText(context, context.getString(R.string.image_copied), Toast.LENGTH_SHORT).show()
-}
-
-/** Best-effort real file path for a MediaStore image (DATA, else RELATIVE_PATH/name). */
-private fun filePath(context: Context, uri: String): String {
-    val projection = arrayOf(
-        MediaStore.MediaColumns.DATA,
-        MediaStore.MediaColumns.RELATIVE_PATH,
-        MediaStore.MediaColumns.DISPLAY_NAME,
-    )
-    runCatching {
-        context.contentResolver.query(Uri.parse(uri), projection, null, null, null)?.use { c ->
-            if (c.moveToFirst()) {
-                fun col(name: String) = c.getColumnIndex(name).takeIf { it >= 0 }?.let { c.getString(it) }
-                val data = col(MediaStore.MediaColumns.DATA)
-                if (!data.isNullOrBlank()) return data
-                val rel = col(MediaStore.MediaColumns.RELATIVE_PATH).orEmpty()
-                val name = col(MediaStore.MediaColumns.DISPLAY_NAME).orEmpty()
-                val joined = (rel + name).trim()
-                if (joined.isNotEmpty()) return joined
-            }
-        }
-    }
-    return uri
 }
 
 @Composable
