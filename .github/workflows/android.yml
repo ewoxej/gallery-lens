@@ -49,7 +49,7 @@ jobs:
             V="${GITHUB_REF#refs/tags/}"; V="${V#v}"
             TAG="${GITHUB_REF#refs/tags/}"     # real release, e.g. v0.2.0
           else
-            V="0.0.${GITHUB_RUN_NUMBER}"
+            V="$(head -n1 "${GITHUB_WORKSPACE}/VERSION" | tr -d '[:space:]')"
             TAG="dev"                          # rolling prerelease for manual runs
           fi
           echo "name=$V" >> "$GITHUB_OUTPUT"

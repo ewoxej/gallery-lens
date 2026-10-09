@@ -16,9 +16,11 @@ android {
         applicationId = "dev.ewoxej.gallerylens"
         minSdk = 26
         targetSdk = 34
-        // Overridable from CI so release artifacts carry the git tag version.
+        // Version name comes from the root VERSION file (single source of truth);
+        // CI can still override both via env (git-tag releases, monotonic code).
+        val versionFile = rootProject.file("VERSION").takeIf { it.exists() }?.readText()?.trim()
         versionCode = (System.getenv("VERSION_CODE") ?: "1").toInt()
-        versionName = System.getenv("VERSION_NAME") ?: "0.1"
+        versionName = System.getenv("VERSION_NAME") ?: versionFile ?: "0.1"
     }
 
     signingConfigs {

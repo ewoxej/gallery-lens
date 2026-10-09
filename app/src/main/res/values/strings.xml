@@ -55,4 +55,16 @@
     <string name="albums_select_all">All albums</string>
     <string name="albums_count">%1$d photos</string>
     <string name="action_save">Save</string>
+    <string name="scope_all_photos">All Photos</string>
+    <string name="scope_albums">Albums</string>
+    <string name="album_unknown">Unknown</string>
+    <string name="action_share">Share</string>
+    <string name="action_more">More</string>
+    <string name="action_copy_image">Copy image</string>
+    <string name="action_show_path">Show file path</string>
+    <string name="action_ignore_photo">Ignore photo</string>
+    <string name="action_copy">Copy</string>
+    <string name="close">Close</string>
+    <string name="path_copied">Path copied</string>
+    <string name="image_copied">Image copied</string>
 </resources>

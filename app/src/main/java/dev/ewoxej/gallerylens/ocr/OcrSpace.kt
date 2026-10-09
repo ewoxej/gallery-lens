@@ -44,6 +44,7 @@ sealed interface OcrOutcome {
 object OcrSpace {
     private const val TAG = "OcrSpace"
     private const val ENDPOINT = "https://api.ocr.space/parse/image"
+    private const val NO_TEXT_MARKER = "*[No text detected]*" // OCR.space's "no text" placeholder
     private const val MAX_DIM = 2000         // downscale longest side to this
     private const val TARGET_BYTES = 950_000 // stay safely under the 1 MB cap
     private const val START_QUALITY = 88
@@ -142,7 +143,9 @@ object OcrSpace {
         if (results != null) {
             for (i in 0 until results.length()) {
                 val r = results.optJSONObject(i) ?: continue
-                val text = r.optString("ParsedText").trim()
+                // OCR.space returns this placeholder for a textless image — it is
+                // NOT recognised text, so drop it (keeps "with text only" correct).
+                val text = r.optString("ParsedText").trim().takeUnless { it == NO_TEXT_MARKER } ?: ""
                 if (text.isNotEmpty()) {
                     if (sb.isNotEmpty()) sb.append('\n')
                     sb.append(text)

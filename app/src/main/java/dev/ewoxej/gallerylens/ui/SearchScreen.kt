@@ -6,6 +6,8 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,9 +23,13 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -48,11 +54,13 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import dev.ewoxej.gallerylens.R
+import dev.ewoxej.gallerylens.data.AlbumSummary
 import dev.ewoxej.gallerylens.data.PhotoEntity
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -66,13 +74,31 @@ fun SearchScreen(vm: MainViewModel, onOpen: (Int) -> Unit, onOpenSettings: () ->
     val results by vm.results.collectAsStateWithLifecycle()
     val status by vm.status.collectAsStateWithLifecycle()
     val onlyWithText by vm.onlyWithText.collectAsStateWithLifecycle()
+    val viewMode by vm.viewMode.collectAsStateWithLifecycle()
+    val openAlbum by vm.openAlbum.collectAsStateWithLifecycle()
+    val albums by vm.albums.collectAsStateWithLifecycle()
     val gridState = rememberLazyGridState()
+    val unknownAlbum = stringResource(R.string.album_unknown)
+
+    val inAlbumList = viewMode == ViewMode.ALBUMS && openAlbum == null
 
     Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
+        ScopeBar(
+            viewMode = viewMode,
+            openAlbum = openAlbum,
+            albumTitle = openAlbum?.let { if (it.isEmpty()) unknownAlbum else it }.orEmpty(),
+            onlyWithText = onlyWithText,
+            showFilter = !inAlbumList && query.isBlank(),
+            onAllPhotos = vm::showAllPhotos,
+            onAlbums = vm::showAlbums,
+            onBackToAlbums = vm::showAlbums,
+            onToggleFilter = { vm.setOnlyWithText(!onlyWithText) },
+        )
+
         OutlinedTextField(
             value = query,
             onValueChange = vm::onQueryChange,
-            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
             trailingIcon = {
                 IconButton(onClick = onOpenSettings) {
@@ -82,19 +108,6 @@ fun SearchScreen(vm: MainViewModel, onOpen: (Int) -> Unit, onOpenSettings: () ->
             placeholder = { Text(stringResource(R.string.search_placeholder)) },
             singleLine = true,
         )
-
-        // Gallery-mode filter (no effect while searching — results are already text).
-        if (query.isBlank()) {
-            FilterChip(
-                selected = onlyWithText,
-                onClick = { vm.setOnlyWithText(!onlyWithText) },
-                label = { Text(stringResource(R.string.filter_with_text)) },
-                leadingIcon = if (onlyWithText) {
-                    { Icon(Icons.Default.Check, contentDescription = null) }
-                } else null,
-                modifier = Modifier.padding(bottom = 4.dp),
-            )
-        }
 
         if (status.isIndexing) {
             val progress = if (status.total > 0) status.done.toFloat() / status.total else 0f
@@ -108,7 +121,9 @@ fun SearchScreen(vm: MainViewModel, onOpen: (Int) -> Unit, onOpenSettings: () ->
             }
         }
 
-        if (results.isEmpty()) {
+        if (inAlbumList) {
+            AlbumGrid(albums, unknownAlbum, onOpen = { vm.openAlbum(it) })
+        } else if (results.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
                     if (query.isBlank()) stringResource(R.string.gallery_empty)
@@ -150,6 +165,121 @@ fun SearchScreen(vm: MainViewModel, onOpen: (Int) -> Unit, onOpenSettings: () ->
                 )
             }
         }
+    }
+}
+
+/** The scope row above the search field: "All Photos ▾" / "Albums ▾" / album name,
+ *  with the "with text only" filter chip on the right. */
+@Composable
+private fun ScopeBar(
+    viewMode: ViewMode,
+    openAlbum: String?,
+    albumTitle: String,
+    onlyWithText: Boolean,
+    showFilter: Boolean,
+    onAllPhotos: () -> Unit,
+    onAlbums: () -> Unit,
+    onBackToAlbums: () -> Unit,
+    onToggleFilter: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (viewMode == ViewMode.ALBUMS && openAlbum != null) {
+            // Inside an album → breadcrumb back to the album list.
+            Row(
+                Modifier.clickable(onClick = onBackToAlbums).padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
+                Text(albumTitle, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 6.dp))
+            }
+        } else {
+            var menu by remember { mutableStateOf(false) }
+            Box {
+                Row(
+                    Modifier.clickable(onClick = { menu = true }).padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        stringResource(if (viewMode == ViewMode.ALL) R.string.scope_all_photos else R.string.scope_albums),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Icon(Icons.Default.ArrowDropDown, contentDescription = null)
+                }
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.scope_all_photos)) },
+                        onClick = { menu = false; onAllPhotos() },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.scope_albums)) },
+                        onClick = { menu = false; onAlbums() },
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.weight(1f))
+
+        if (showFilter) {
+            FilterChip(
+                selected = onlyWithText,
+                onClick = onToggleFilter,
+                label = { Text(stringResource(R.string.filter_with_text)) },
+                leadingIcon = if (onlyWithText) {
+                    { Icon(Icons.Default.Check, contentDescription = null) }
+                } else null,
+            )
+        }
+    }
+}
+
+@Composable
+private fun AlbumGrid(albums: List<AlbumSummary>, unknownName: String, onOpen: (String) -> Unit) {
+    if (albums.isEmpty()) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(stringResource(R.string.gallery_empty), style = MaterialTheme.typography.bodyMedium)
+        }
+        return
+    }
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(minSize = 110.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        items(albums, key = { it.bucketName ?: "" }) { album ->
+            AlbumCell(album, unknownName) { onOpen(album.bucketName ?: "") }
+        }
+    }
+}
+
+@Composable
+private fun AlbumCell(album: AlbumSummary, unknownName: String, onOpen: () -> Unit) {
+    Column(Modifier.clickable(onClick = onOpen)) {
+        AsyncImage(
+            model = album.uri,
+            contentDescription = album.bucketName,
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .clip(RoundedCornerShape(8.dp)),
+            contentScale = ContentScale.Crop,
+        )
+        Text(
+            album.bucketName ?: unknownName,
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 4.dp, start = 2.dp),
+        )
+        Text(
+            "${album.count}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 2.dp),
+        )
     }
 }
 

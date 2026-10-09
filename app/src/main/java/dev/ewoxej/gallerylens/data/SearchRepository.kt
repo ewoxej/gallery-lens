@@ -7,11 +7,11 @@ class SearchRepository(private val dao: PhotoDao) {
      * Blank query -> the gallery grid: all photos, or only those with recognised
      * text when [onlyWithText] is on.
      */
-    suspend fun results(raw: String, onlyWithText: Boolean): List<PhotoEntity> {
+    suspend fun results(raw: String, onlyWithText: Boolean, bucket: String?): List<PhotoEntity> {
         val fts = toFtsQuery(raw)
-            ?: return if (onlyWithText) dao.recentWithText(GALLERY_LIMIT)
-            else dao.allByDateDesc(GALLERY_LIMIT)
-        return runCatching { dao.search(fts) }.getOrDefault(emptyList())
+            ?: return if (onlyWithText) dao.recentWithText(GALLERY_LIMIT, bucket)
+            else dao.allByDateDesc(GALLERY_LIMIT, bucket)
+        return runCatching { dao.search(fts, bucket) }.getOrDefault(emptyList())
     }
 
     private fun toFtsQuery(raw: String): String? {

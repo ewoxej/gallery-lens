@@ -55,4 +55,16 @@
     <string name="albums_select_all">Все альбомы</string>
     <string name="albums_count">%1$d фото</string>
     <string name="action_save">Сохранить</string>
+    <string name="scope_all_photos">Все фото</string>
+    <string name="scope_albums">Альбомы</string>
+    <string name="album_unknown">Без альбома</string>
+    <string name="action_share">Поделиться</string>
+    <string name="action_more">Ещё</string>
+    <string name="action_copy_image">Копировать картинку</string>
+    <string name="action_show_path">Показать путь к файлу</string>
+    <string name="action_ignore_photo">Игнорировать фото</string>
+    <string name="action_copy">Копировать</string>
+    <string name="close">Закрыть</string>
+    <string name="path_copied">Путь скопирован</string>
+    <string name="image_copied">Картинка скопирована</string>
 </resources>

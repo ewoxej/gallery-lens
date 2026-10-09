@@ -32,7 +32,12 @@ data class PhotoEntity(
     // Album filter: photos in de-selected albums are kept (OCR preserved) but
     // hidden from the gallery/search and skipped by indexing. Default included.
     val included: Boolean = true,
+    // Per-photo ignore: hidden from the gallery/search and skipped by indexing.
+    val ignored: Boolean = false,
 )
+
+/** One album for the gallery's "Albums" view: its name, photo count, and a cover. */
+data class AlbumSummary(val bucketName: String?, val count: Int, val uri: String)
 
 // unicode61 case-folds Cyrillic (the default `simple` tokenizer folds ASCII
 // only). remove_diacritics=1 strips accents on BOTH the indexed text and the

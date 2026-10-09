@@ -1,12 +1,20 @@
 package dev.ewoxej.gallerylens.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.provider.MediaStore
 import android.widget.Toast
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -18,12 +26,19 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Subject
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,11 +51,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
@@ -55,11 +70,31 @@ fun PhotoPagerScreen(vm: MainViewModel, startIndex: Int, onClose: () -> Unit) {
     val query by vm.query.collectAsStateWithLifecycle()
     if (photos.isEmpty()) { onClose(); return }
 
+    val context = LocalContext.current
     val start = startIndex.coerceIn(0, photos.size - 1)
     val pagerState = rememberPagerState(initialPage = start, pageCount = { photos.size })
     var showText by remember { mutableStateOf(false) }
+    var menuOpen by remember { mutableStateOf(false) }
+    var pathToShow by remember { mutableStateOf<String?>(null) }
 
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
+    val current = photos.getOrNull(pagerState.currentPage)
+
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            // Swipe down to dismiss (horizontal swipes stay with the pager).
+            .pointerInput(Unit) {
+                var dragged = 0f
+                val threshold = 160.dp.toPx()
+                detectVerticalDragGestures(
+                    onDragStart = { dragged = 0f },
+                    onVerticalDrag = { _, dy -> dragged += dy },
+                    onDragEnd = { if (dragged > threshold) onClose() },
+                    onDragCancel = { dragged = 0f },
+                )
+            },
+    ) {
         HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
             PhotoPage(
                 photo = photos[page],
@@ -69,28 +104,146 @@ fun PhotoPagerScreen(vm: MainViewModel, startIndex: Int, onClose: () -> Unit) {
         }
 
         if (showText) {
-            val current = photos.getOrNull(pagerState.currentPage)
             val text = current?.ocrText
             if (!text.isNullOrBlank()) {
                 TextPanel(text, Modifier.align(Alignment.BottomCenter))
             }
         }
 
+        // Back button, top-left.
         IconButton(
-            onClick = { showText = !showText },
+            onClick = onClose,
             modifier = Modifier
-                .align(Alignment.TopEnd)
+                .align(Alignment.TopStart)
                 .padding(12.dp)
                 .size(44.dp)
                 .background(Color.Black.copy(alpha = 0.45f), CircleShape),
         ) {
-            Icon(
-                Icons.AutoMirrored.Filled.Subject,
-                contentDescription = stringResource(R.string.action_show_text),
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back), tint = Color.White)
+        }
+
+        // Actions, top-right: text toggle, share, overflow menu.
+        Row(
+            modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),
+        ) {
+            CircleAction(
+                icon = Icons.AutoMirrored.Filled.Subject,
+                description = stringResource(R.string.action_show_text),
                 tint = if (showText) MaterialTheme.colorScheme.primary else Color.White,
+                onClick = { showText = !showText },
             )
+            CircleAction(
+                icon = Icons.Default.Share,
+                description = stringResource(R.string.action_share),
+                onClick = { current?.let { shareImage(context, it.uri) } },
+            )
+            Box {
+                CircleAction(
+                    icon = Icons.Default.MoreVert,
+                    description = stringResource(R.string.action_more),
+                    onClick = { menuOpen = true },
+                )
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.action_copy_image)) },
+                        onClick = {
+                            menuOpen = false
+                            current?.let { copyImage(context, it.uri) }
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.action_show_path)) },
+                        onClick = {
+                            menuOpen = false
+                            current?.let { pathToShow = filePath(context, it.uri) }
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.action_ignore_photo)) },
+                        onClick = {
+                            menuOpen = false
+                            current?.let { vm.setIgnored(it.id, true); onClose() }
+                        },
+                    )
+                }
+            }
         }
     }
+
+    pathToShow?.let { path ->
+        val clipboard = LocalClipboardManager.current
+        AlertDialog(
+            onDismissRequest = { pathToShow = null },
+            title = { Text(stringResource(R.string.action_show_path)) },
+            text = { Text(path, style = MaterialTheme.typography.bodyMedium) },
+            confirmButton = {
+                TextButton(onClick = {
+                    clipboard.setText(AnnotatedString(path))
+                    Toast.makeText(context, context.getString(R.string.path_copied), Toast.LENGTH_SHORT).show()
+                    pathToShow = null
+                }) { Text(stringResource(R.string.action_copy)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pathToShow = null }) { Text(stringResource(R.string.close)) }
+            },
+        )
+    }
+}
+
+@Composable
+private fun CircleAction(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    description: String,
+    tint: Color = Color.White,
+    onClick: () -> Unit,
+) {
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier
+            .padding(start = 8.dp)
+            .size(44.dp)
+            .background(Color.Black.copy(alpha = 0.45f), CircleShape),
+    ) {
+        Icon(icon, contentDescription = description, tint = tint)
+    }
+}
+
+private fun shareImage(context: Context, uri: String) {
+    val send = Intent(Intent.ACTION_SEND).apply {
+        type = "image/*"
+        putExtra(Intent.EXTRA_STREAM, Uri.parse(uri))
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    context.startActivity(Intent.createChooser(send, null))
+}
+
+private fun copyImage(context: Context, uri: String) {
+    val clip = ClipData.newUri(context.contentResolver, "image", Uri.parse(uri))
+    context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(clip)
+    Toast.makeText(context, context.getString(R.string.image_copied), Toast.LENGTH_SHORT).show()
+}
+
+/** Best-effort real file path for a MediaStore image (DATA, else RELATIVE_PATH/name). */
+private fun filePath(context: Context, uri: String): String {
+    val projection = arrayOf(
+        MediaStore.MediaColumns.DATA,
+        MediaStore.MediaColumns.RELATIVE_PATH,
+        MediaStore.MediaColumns.DISPLAY_NAME,
+    )
+    runCatching {
+        context.contentResolver.query(Uri.parse(uri), projection, null, null, null)?.use { c ->
+            if (c.moveToFirst()) {
+                fun col(name: String) = c.getColumnIndex(name).takeIf { it >= 0 }?.let { c.getString(it) }
+                val data = col(MediaStore.MediaColumns.DATA)
+                if (!data.isNullOrBlank()) return data
+                val rel = col(MediaStore.MediaColumns.RELATIVE_PATH).orEmpty()
+                val name = col(MediaStore.MediaColumns.DISPLAY_NAME).orEmpty()
+                val joined = (rel + name).trim()
+                if (joined.isNotEmpty()) return joined
+            }
+        }
+    }
+    return uri
 }
 
 @Composable

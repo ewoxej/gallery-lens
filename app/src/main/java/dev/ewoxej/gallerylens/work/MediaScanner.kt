@@ -54,9 +54,27 @@ class MediaScanner(private val context: Context, private val dao: PhotoDao) {
             }
         }
 
-        if (found.isEmpty()) return 0
-        val inserted = dao.insertIgnore(found)
-        return inserted.count { it != -1L }
+        val insertedCount = if (found.isEmpty()) 0 else dao.insertIgnore(found).count { it != -1L }
+        reconcileDeletions()
+        return insertedCount
+    }
+
+    /** Drop DB rows whose photo was deleted from the device (else the grid shows
+     *  blank cells for images that no longer exist). */
+    private suspend fun reconcileDeletions() {
+        val present = HashSet<Long>()
+        val collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+        context.contentResolver.query(
+            collection, arrayOf(MediaStore.Images.Media._ID), null, null, null,
+        )?.use { c ->
+            val idCol = c.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+            while (c.moveToNext()) present += c.getLong(idCol)
+        }
+        if (present.isEmpty()) return // empty/unreadable query — don't wipe everything
+        val removed = dao.allMediaIds().filterNot { it in present }
+        if (removed.isEmpty()) return
+        removed.chunked(400).forEach { dao.deletePhotosByMediaIds(it) }
+        dao.deleteOrphanFts()
     }
 
     /** Every album on the device with its photo count, for the album-filter UI. */

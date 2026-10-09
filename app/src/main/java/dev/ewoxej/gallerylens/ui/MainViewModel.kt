@@ -26,6 +26,8 @@ data class IndexStatus(val total: Int, val done: Int, val pending: Int) {
     val isIndexing get() = pending > 0
 }
 
+enum class ViewMode { ALL, ALBUMS }
+
 data class Stats(
     val total: Int = 0,
     val done: Int = 0,
@@ -51,18 +53,53 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _onlyWithText = MutableStateFlow(false)
     val onlyWithText: StateFlow<Boolean> = _onlyWithText.asStateFlow()
 
+    // Gallery view: All Photos (flat grid) vs Albums (browse by album).
+    private val _viewMode = MutableStateFlow(ViewMode.ALL)
+    val viewMode: StateFlow<ViewMode> = _viewMode.asStateFlow()
+
+    // The album (bucket key) currently open, or null = not inside one. "" is the
+    // unnamed-bucket album. When set, the photo grid is scoped to it.
+    private val _openAlbum = MutableStateFlow<String?>(null)
+    val openAlbum: StateFlow<String?> = _openAlbum.asStateFlow()
+
     // Bumped to force the one-shot gallery query to re-run (e.g. after the album
     // selection changes, which the DB-count flows can't signal on their own).
     private val _refresh = MutableStateFlow(0)
 
     val results: StateFlow<List<PhotoEntity>> =
-        combine(_query.debounce(250), _onlyWithText, _refresh) { q, only, _ -> q to only }
-            .flatMapLatest { (q, only) ->
-                kotlinx.coroutines.flow.flow { emit(repo.results(q, only)) }
+        combine(_query.debounce(250), _onlyWithText, _openAlbum, _refresh) { q, only, bucket, _ ->
+            Triple(q, only, bucket)
+        }
+            .flatMapLatest { (q, only, bucket) ->
+                kotlinx.coroutines.flow.flow { emit(repo.results(q, only, bucket)) }
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** Album rows for the "Albums" view (newest first); empty while in All mode. */
+    val albums: StateFlow<List<dev.ewoxej.gallerylens.data.AlbumSummary>> =
+        combine(_viewMode, _refresh) { mode, _ -> mode }
+            .flatMapLatest { mode ->
+                kotlinx.coroutines.flow.flow {
+                    emit(if (mode == ViewMode.ALBUMS) dao.albumSummaries() else emptyList())
+                }
             }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun refresh() { _refresh.value++ }
+
+    fun showAllPhotos() { _viewMode.value = ViewMode.ALL; _openAlbum.value = null }
+
+    fun showAlbums() { _viewMode.value = ViewMode.ALBUMS; _openAlbum.value = null }
+
+    fun openAlbum(bucketKey: String) { _viewMode.value = ViewMode.ALBUMS; _openAlbum.value = bucketKey }
+
+    /** Toggle a photo's ignore flag (ignored photos are hidden + not indexed). */
+    fun setIgnored(id: Long, ignored: Boolean) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { dao.setIgnored(id, ignored) }
+            refresh()
+        }
+    }
 
     val stats: StateFlow<Stats> =
         combine(
