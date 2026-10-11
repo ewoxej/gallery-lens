@@ -1,5 +1,11 @@
 package dev.ewoxej.gallerylens.ui
 
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings as AndroidSettings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -7,7 +13,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -33,6 +42,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -55,6 +65,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.ewoxej.gallerylens.R
 import dev.ewoxej.gallerylens.data.Settings
 import dev.ewoxej.gallerylens.ui.theme.MonoFont
+import dev.ewoxej.gallerylens.work.IndexingWorker
+import dev.ewoxej.gallerylens.work.MetadataWriter
 
 @Composable
 fun SettingsScreen(vm: MainViewModel, onOpenAlbums: () -> Unit) {
@@ -95,6 +107,9 @@ fun SettingsScreen(vm: MainViewModel, onOpenAlbums: () -> Unit) {
                 onClick = { confirmReindex = true },
             )
         }
+
+        SectionLabel(stringResource(R.string.metadata_section))
+        MetadataCard()
 
         SectionLabel(stringResource(R.string.ocr_title))
         OcrCard()
@@ -141,13 +156,13 @@ private fun StatisticsCard(stats: Stats) {
                 gapSize = 0.dp,
                 drawStopIndicator = {},
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                StatTile(stringResource(R.string.stat_with_text), stats.done, dot = MaterialTheme.colorScheme.primary, Modifier.weight(1f))
-                StatTile(stringResource(R.string.stat_no_text), stats.noText, dot = null, Modifier.weight(1f))
+            Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                StatTile(stringResource(R.string.stat_with_text), stats.done, dot = MaterialTheme.colorScheme.primary, Modifier.weight(1f).fillMaxHeight())
+                StatTile(stringResource(R.string.stat_no_text), stats.noText, dot = null, Modifier.weight(1f).fillMaxHeight())
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                StatTile(stringResource(R.string.stat_queued), stats.pending, dot = null, Modifier.weight(1f))
-                StatTile(stringResource(R.string.stat_errors), stats.failed, dot = null, Modifier.weight(1f))
+            Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                StatTile(stringResource(R.string.stat_queued), stats.pending, dot = null, Modifier.weight(1f).fillMaxHeight())
+                StatTile(stringResource(R.string.stat_errors), stats.failed, dot = null, Modifier.weight(1f).fillMaxHeight())
             }
         }
     }
@@ -168,7 +183,69 @@ private fun StatTile(label: String, value: Int, dot: androidx.compose.ui.graphic
             }
             Text(label, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        Spacer(Modifier.weight(1f))
         Text("$value", fontFamily = MonoFont, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+@Composable
+private fun MetadataCard() {
+    val context = LocalContext.current
+    var enabled by remember { mutableStateOf(Settings.writeMetadata(context)) }
+    var hasAccess by remember { mutableStateOf(MetadataWriter.canWrite()) }
+
+    val launcher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) {
+        hasAccess = MetadataWriter.canWrite()
+        if (enabled && hasAccess) IndexingWorker.enqueue(context)
+    }
+
+    fun requestAccess() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            launcher.launch(
+                Intent(
+                    AndroidSettings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                    Uri.parse("package:${context.packageName}"),
+                ),
+            )
+        }
+    }
+
+    val needsAccess = enabled && !hasAccess
+    Card {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable(enabled = needsAccess) { requestAccess() }
+                .padding(start = 18.dp, end = 16.dp, top = 14.dp, bottom = 14.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    stringResource(R.string.metadata_toggle_title),
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium,
+                )
+                Text(
+                    stringResource(if (needsAccess) R.string.metadata_needs_access else R.string.metadata_toggle_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (needsAccess) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(
+                checked = enabled,
+                onCheckedChange = { want ->
+                    enabled = want
+                    Settings.setWriteMetadata(context, want)
+                    if (want) {
+                        hasAccess = MetadataWriter.canWrite()
+                        if (hasAccess) IndexingWorker.enqueue(context) else requestAccess()
+                    }
+                },
+            )
+        }
     }
 }
 

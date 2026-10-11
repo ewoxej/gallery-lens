@@ -34,6 +34,16 @@ object Settings {
         if (changed) resetOcrCounters(context)
     }
 
+    // Optional: write the recognized text into each photo's EXIF metadata.
+    private const val KEY_WRITE_METADATA = "write_metadata"
+
+    fun writeMetadata(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_WRITE_METADATA, false)
+
+    fun setWriteMetadata(context: Context, value: Boolean) {
+        prefs(context).edit().putBoolean(KEY_WRITE_METADATA, value).apply()
+    }
+
     // Album filter: the set of album (bucket) keys to index/show. null = every
     // album (the default — no filter). An empty set means "none selected".
     private const val KEY_INCLUDED_BUCKETS = "included_buckets"

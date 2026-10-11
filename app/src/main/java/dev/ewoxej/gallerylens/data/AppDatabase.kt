@@ -22,7 +22,8 @@ class Converters {
     // v4: per-photo `included` flag for the album filter.
     // v5: dropped the Claude cloud pipeline — retire its CLOUD_* statuses.
     // v6: per-photo `ignored` flag; purge OCR.space's "no text" placeholder rows.
-    version = 6,
+    // v7: per-photo `metaWritten` flag for the "write text to metadata" feature.
+    version = 7,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
@@ -65,13 +66,20 @@ abstract class AppDatabase : androidx.room.RoomDatabase() {
             }
         }
 
+        // Add the per-photo "metadata written" flag (additive; preserves OCR).
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE photos ADD COLUMN metaWritten INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         fun get(context: Context): AppDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
                     "vision-search.db",
-                ).addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                ).addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                     // Backstop for older/dev schema jumps without a written migration.
                     .fallbackToDestructiveMigration()
                     .build().also { instance = it }

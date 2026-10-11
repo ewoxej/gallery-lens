@@ -30,7 +30,7 @@
     <string name="action_back">Back</string>
     <string name="stats_title">Statistics</string>
     <string name="stat_total">Total photos</string>
-    <string name="stat_with_text">With recognised text</string>
+    <string name="stat_with_text">With text</string>
     <string name="stat_no_text">No text</string>
     <string name="stat_queued">Queued</string>
     <string name="stat_errors">Errors</string>
@@ -53,6 +53,12 @@
     <string name="ocr_desc">Text is recognised by the OCR.space API. Get a free key at ocr.space — the free tier allows 500 photos per day. Larger photos are downscaled and compressed to under 1 MB before sending. When the daily limit is reached, indexing pauses and resumes automatically the next day.</string>
     <string name="action_show_key">Show key</string>
     <string name="action_hide_key">Hide key</string>
+    <!-- Write text to photo metadata -->
+    <string name="metadata_section">Metadata</string>
+    <string name="metadata_toggle_title">Write text to photo metadata</string>
+    <string name="metadata_toggle_desc">Saves the recognised text into each photo\'s EXIF description (ImageDescription and UserComment), so other gallery apps can read it too.</string>
+    <string name="metadata_needs_access">Needs “All files access” to edit your photos. Tap to grant.</string>
+
     <string name="albums_action">Choose albums to index</string>
     <string name="albums_action_desc">Only selected albums are shown and recognised; the rest are hidden and skipped.</string>
     <string name="albums_title">Albums</string>

@@ -34,6 +34,9 @@ data class PhotoEntity(
     val included: Boolean = true,
     // Per-photo ignore: hidden from the gallery/search and skipped by indexing.
     val ignored: Boolean = false,
+    // Whether the recognized text has been written into this photo's EXIF metadata
+    // (only relevant while the "write to metadata" setting is on). Reset on re-index.
+    val metaWritten: Boolean = false,
 )
 
 /** One album for the gallery's "Albums" view: its name, photo count, and a cover. */

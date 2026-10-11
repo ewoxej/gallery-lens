@@ -46,10 +46,17 @@ class IndexingWorker(context: Context, params: WorkerParameters) :
             .onFailure { Log.w(TAG, "scan failed", it) }
 
         val apiKey = Settings.apiKey(applicationContext)
-        if (apiKey.isBlank()) return Result.success() // no key -> nothing to recognise
+        // The metadata pass is local (no API) and may have a backlog even with no key.
+        val stampMetadata = Settings.writeMetadata(applicationContext) && MetadataWriter.canWrite()
+        if (apiKey.isBlank() && !stampMetadata) return Result.success() // nothing to do
 
         runCatching { setForeground(foregroundInfo()) }
             .onFailure { Log.w(TAG, "setForeground failed; indexing without it", it) }
+
+        if (apiKey.isBlank()) { // no key -> only the metadata backfill can run
+            writeMetadata(dao)
+            return Result.success()
+        }
 
         // Engine 3's free plan permits only ONE request at a time and 60/hour, so
         // recognise serially and pace ourselves off the API's retryAfter. Each
@@ -93,8 +100,30 @@ class IndexingWorker(context: Context, params: WorkerParameters) :
             }
         }
 
+        // After recognising, stamp any newly-recognised (or backlogged) photos.
+        if (stampMetadata) writeMetadata(dao)
+
         if (quotaHit) scheduleDailyResume(applicationContext)
         return Result.success()
+    }
+
+    /**
+     * Write the recognised text into the EXIF of photos that have text but haven't
+     * been stamped yet. Local and quota-free; a photo is marked done whether the
+     * write succeeded or its format can't be stamped, so we never loop on it.
+     */
+    private suspend fun writeMetadata(dao: PhotoDao) {
+        while (!isStopped) {
+            val batch = dao.nextNeedingMetadata(BATCH)
+            if (batch.isEmpty()) break
+            for (photo in batch) {
+                if (isStopped) break
+                val text = photo.ocrText
+                if (text.isNullOrBlank()) { dao.markMetaWritten(photo.id); continue }
+                MetadataWriter.write(applicationContext, photo.uri, text)
+                dao.markMetaWritten(photo.id)
+            }
+        }
     }
 
     private fun foregroundInfo(): ForegroundInfo {

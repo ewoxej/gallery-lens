@@ -30,7 +30,7 @@
     <string name="action_back">Назад</string>
     <string name="stats_title">Статистика</string>
     <string name="stat_total">Всего фото</string>
-    <string name="stat_with_text">С распознанным текстом</string>
+    <string name="stat_with_text">С текстом</string>
     <string name="stat_no_text">Без текста</string>
     <string name="stat_queued">В очереди</string>
     <string name="stat_errors">Ошибки</string>
@@ -53,6 +53,12 @@
     <string name="ocr_desc">Текст распознаётся через API OCR.space. Бесплатный ключ можно получить на ocr.space — бесплатный тариф даёт 500 фото в день. Большие фото уменьшаются и сжимаются до 1 МБ перед отправкой. При достижении дневного лимита индексация приостанавливается и автоматически продолжается на следующий день.</string>
     <string name="action_show_key">Показать ключ</string>
     <string name="action_hide_key">Скрыть ключ</string>
+    <!-- Запись текста в метаданные фото -->
+    <string name="metadata_section">Метаданные</string>
+    <string name="metadata_toggle_title">Писать текст в метаданные фото</string>
+    <string name="metadata_toggle_desc">Сохраняет распознанный текст в EXIF-описание фото (ImageDescription и UserComment), чтобы его видели и другие галереи.</string>
+    <string name="metadata_needs_access">Нужен доступ «Ко всем файлам», чтобы изменять фото. Нажмите, чтобы выдать.</string>
+
     <string name="albums_action">Выбрать альбомы для индексации</string>
     <string name="albums_action_desc">Показываются и распознаются только выбранные альбомы; остальные скрыты и пропускаются.</string>
     <string name="albums_title">Альбомы</string>

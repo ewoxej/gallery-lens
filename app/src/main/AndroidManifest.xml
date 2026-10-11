@@ -7,6 +7,16 @@
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
 
+    <!-- Optional "write recognized text to photo metadata" feature: editing photos
+         the app doesn't own needs broad file access under scoped storage. Only used
+         when the user turns the feature on and grants "All files access". -->
+    <uses-permission
+        android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="29" />
+
     <!-- Cloud OCR fallback (Claude API) — only used when the user enables it. -->
     <uses-permission android:name="android.permission.INTERNET" />
 

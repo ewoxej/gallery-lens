@@ -142,6 +142,21 @@ interface PhotoDao {
     @Query("UPDATE photos SET ignored = :ignored WHERE id = :id")
     suspend fun setIgnored(id: Long, ignored: Boolean)
 
+    // --- "Write text to metadata" feature: recognised photos not yet stamped ---
+
+    @Query(
+        """
+        SELECT * FROM photos
+        WHERE status = 'DONE' AND ocrText IS NOT NULL AND metaWritten = 0
+            AND included = 1 AND ignored = 0
+        ORDER BY dateTakenMs DESC LIMIT :limit
+        """
+    )
+    suspend fun nextNeedingMetadata(limit: Int): List<PhotoEntity>
+
+    @Query("UPDATE photos SET metaWritten = 1 WHERE id = :id")
+    suspend fun markMetaWritten(id: Long)
+
     // --- Albums view: one row per album with a cover (its newest photo). ---
     @Query(
         """
@@ -173,8 +188,8 @@ interface PhotoDao {
 
     @Query(
         """
-        UPDATE photos SET status = 'PENDING', ocrText = NULL,
-            ocrWidth = NULL, ocrHeight = NULL, blocksJson = NULL, indexedAtMs = NULL
+        UPDATE photos SET status = 'PENDING', ocrText = NULL, ocrWidth = NULL,
+            ocrHeight = NULL, blocksJson = NULL, indexedAtMs = NULL, metaWritten = 0
         """
     )
     suspend fun resetAllToPending()

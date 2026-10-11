@@ -91,6 +91,9 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.9.1")
     implementation("io.coil-kt:coil-compose:2.7.0")
 
+    // Reads/writes EXIF so recognized text can be saved into each photo's metadata.
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
+
     // OCR is done via the OCR.space HTTP API. OkHttp is already on the classpath
     // via Coil; declare it explicitly since we call it directly.
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
