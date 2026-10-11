@@ -8,13 +8,26 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -61,7 +74,7 @@ class MainActivity : ComponentActivity() {
 
                     if (granted) {
                         // Kick indexing on every cold start so new photos get picked up.
-                        androidx.compose.runtime.LaunchedEffect(Unit) { vm.startIndexing() }
+                        LaunchedEffect(Unit) { vm.startIndexing() }
                         AppNav(vm)
                     } else {
                         PermissionGate(onRequest = { launcher.launch(mediaPermission) })
@@ -75,32 +88,80 @@ class MainActivity : ComponentActivity() {
         ContextCompat.checkSelfPermission(this, mediaPermission) == PackageManager.PERMISSION_GRANTED
 }
 
+private enum class Tab { PHOTOS, ALBUMS, SETTINGS }
+
 @Composable
 private fun AppNav(vm: MainViewModel) {
     val nav = rememberNavController()
-    NavHost(navController = nav, startDestination = "search") {
-        composable("search") {
-            SearchScreen(
+    NavHost(navController = nav, startDestination = "main") {
+        composable("main") {
+            MainScaffold(
                 vm,
                 onOpen = { index -> nav.navigate("pager/$index") },
-                onOpenSettings = { nav.navigate("settings") },
+                onOpenAlbumPicker = { nav.navigate("albumpicker") },
             )
         }
         composable("pager/{index}") { entry ->
             val index = entry.arguments?.getString("index")?.toIntOrNull() ?: 0
             PhotoPagerScreen(vm, index, onClose = { nav.popBackStack() })
         }
-        composable("settings") {
-            SettingsScreen(
-                vm,
-                onBack = { nav.popBackStack() },
-                onOpenAlbums = { nav.navigate("albums") },
-            )
-        }
-        composable("albums") {
+        composable("albumpicker") {
             AlbumsScreen(vm, onBack = { nav.popBackStack() })
         }
     }
+}
+
+@Composable
+private fun MainScaffold(vm: MainViewModel, onOpen: (Int) -> Unit, onOpenAlbumPicker: () -> Unit) {
+    var tab by rememberSaveable { mutableStateOf(Tab.PHOTOS) }
+    // The Photos/Albums tabs drive the gallery view mode.
+    LaunchedEffect(tab) {
+        when (tab) {
+            Tab.PHOTOS -> vm.showAllPhotos()
+            Tab.ALBUMS -> vm.showAlbums()
+            Tab.SETTINGS -> {}
+        }
+    }
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        bottomBar = {
+            NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest) {
+                NavItem(Tab.PHOTOS, tab, Icons.Default.PhotoLibrary, R.string.nav_photos) { tab = it }
+                NavItem(Tab.ALBUMS, tab, Icons.Default.Folder, R.string.scope_albums) { tab = it }
+                NavItem(Tab.SETTINGS, tab, Icons.Default.Settings, R.string.settings_title) { tab = it }
+            }
+        },
+    ) { padding ->
+        Box(Modifier.fillMaxSize().padding(padding)) {
+            when (tab) {
+                Tab.SETTINGS -> SettingsScreen(vm, onOpenAlbums = onOpenAlbumPicker)
+                else -> SearchScreen(vm, onOpen = onOpen)
+            }
+        }
+    }
+}
+
+@Composable
+private fun RowScope.NavItem(
+    tab: Tab,
+    selected: Tab,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    labelRes: Int,
+    onSelect: (Tab) -> Unit,
+) {
+    NavigationBarItem(
+        selected = selected == tab,
+        onClick = { onSelect(tab) },
+        icon = { Icon(icon, contentDescription = null) },
+        label = { Text(stringResource(labelRes)) },
+        colors = NavigationBarItemDefaults.colors(
+            selectedIconColor = MaterialTheme.colorScheme.primary,
+            selectedTextColor = MaterialTheme.colorScheme.primary,
+            indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        ),
+    )
 }
 
 @Composable

@@ -1,8 +1,11 @@
 package dev.ewoxej.gallerylens.ui
 
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -15,10 +18,12 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -27,25 +32,19 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -61,23 +60,26 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import android.widget.Toast
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import dev.ewoxej.gallerylens.R
 import dev.ewoxej.gallerylens.data.AlbumSummary
 import dev.ewoxej.gallerylens.data.PhotoEntity
+import dev.ewoxej.gallerylens.ui.theme.MonoFont
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -86,7 +88,7 @@ import kotlin.math.roundToInt
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun SearchScreen(vm: MainViewModel, onOpen: (Int) -> Unit, onOpenSettings: () -> Unit) {
+fun SearchScreen(vm: MainViewModel, onOpen: (Int) -> Unit) {
     val query by vm.query.collectAsStateWithLifecycle()
     val results by vm.results.collectAsStateWithLifecycle()
     val status by vm.status.collectAsStateWithLifecycle()
@@ -98,9 +100,9 @@ fun SearchScreen(vm: MainViewModel, onOpen: (Int) -> Unit, onOpenSettings: () ->
     val unknownAlbum = stringResource(R.string.album_unknown)
     val context = LocalContext.current
 
+    val inAlbum = viewMode == ViewMode.ALBUMS && openAlbum != null
     val inAlbumList = viewMode == ViewMode.ALBUMS && openAlbum == null
 
-    // Multi-select in the photo grid (long-press to start, tap to add/remove).
     var selected by remember { mutableStateOf(emptySet<Long>()) }
     val selectionMode = selected.isNotEmpty()
     var pathToShow by remember { mutableStateOf<String?>(null) }
@@ -108,58 +110,62 @@ fun SearchScreen(vm: MainViewModel, onOpen: (Int) -> Unit, onOpenSettings: () ->
     fun toggle(id: Long) { selected = if (id in selected) selected - id else selected + id }
     fun selectedUris() = results.filter { it.id in selected }.map { it.uri }
 
-    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
+    val title = when {
+        inAlbum -> if (openAlbum!!.isEmpty()) unknownAlbum else openAlbum!!
+        viewMode == ViewMode.ALBUMS -> stringResource(R.string.scope_albums)
+        else -> stringResource(R.string.scope_all_photos)
+    }
+
+    Column(Modifier.fillMaxSize().padding(horizontal = 18.dp)) {
         if (selectionMode) {
             SelectionBar(
                 count = selected.size,
                 onClose = { selected = emptySet() },
                 onShare = { shareImages(context, selectedUris()) },
-                onCopy = {
-                    copyImages(context, selectedUris())
-                    Toast.makeText(context, context.getString(R.string.image_copied), Toast.LENGTH_SHORT).show()
-                },
+                onCopy = if (selected.size == 1) {
+                    {
+                        copyImages(context, selectedUris())
+                        Toast.makeText(context, context.getString(R.string.image_copied), Toast.LENGTH_SHORT).show()
+                    }
+                } else null,
                 onPath = if (selected.size == 1) {
                     { pathToShow = filePath(context, selectedUris().first()) }
                 } else null,
                 onIgnore = { vm.setIgnored(selected, true); selected = emptySet() },
             )
         } else {
-            ScopeBar(
-                viewMode = viewMode,
-                openAlbum = openAlbum,
-                albumTitle = openAlbum?.let { if (it.isEmpty()) unknownAlbum else it }.orEmpty(),
-                onlyWithText = onlyWithText,
-                showFilter = !inAlbumList && query.isBlank(),
-                onAllPhotos = vm::showAllPhotos,
-                onAlbums = vm::showAlbums,
-                onBackToAlbums = vm::showAlbums,
-                onToggleFilter = { vm.setOnlyWithText(!onlyWithText) },
-            )
-
-            OutlinedTextField(
-                value = query,
-                onValueChange = vm::onQueryChange,
-                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                trailingIcon = {
-                    IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.action_settings))
-                    }
-                },
-                placeholder = { Text(stringResource(R.string.search_placeholder)) },
-                singleLine = true,
-            )
-
-            if (status.isIndexing) {
-                val progress = if (status.total > 0) status.done.toFloat() / status.total else 0f
-                Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-                    LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
-                    Text(
-                        stringResource(R.string.indexing_progress, status.done, status.total),
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.padding(top = 4.dp),
+            // Fixed-height title row so the title sits in the same spot on every
+            // tab, regardless of the back arrow / "With text" pill.
+            Row(
+                Modifier.fillMaxWidth().height(HEADER_HEIGHT),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (inAlbum) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = stringResource(R.string.action_back),
+                        modifier = Modifier
+                            .padding(end = 8.dp)
+                            .size(22.dp)
+                            .clickable(onClick = vm::showAlbums),
                     )
                 }
+                Text(
+                    title,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                if (!inAlbumList) {
+                    WithTextPill(active = onlyWithText, onClick = { vm.setOnlyWithText(!onlyWithText) })
+                }
+            }
+
+            if (!inAlbumList) {
+                SearchField(query, vm::onQueryChange)
+                Spacer(Modifier.size(10.dp))
             }
         }
 
@@ -171,21 +177,26 @@ fun SearchScreen(vm: MainViewModel, onOpen: (Int) -> Unit, onOpenSettings: () ->
                     if (query.isBlank()) stringResource(R.string.gallery_empty)
                     else stringResource(R.string.no_results),
                     style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         } else {
-            // Group photos into month sections (Google-Photos style): a full-width
-            // header before each month, then that month's thumbnails.
             val sections = remember(results) { buildSections(results) }
             val gridItems = sections.first
             val labels = sections.second
             Box(Modifier.fillMaxSize()) {
                 LazyVerticalGrid(
                     state = gridState,
-                    columns = GridCells.Adaptive(minSize = 110.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    columns = GridCells.Fixed(3),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
+                    // Indexing info scrolls together with the photos (not pinned).
+                    if (status.isIndexing) {
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            IndexingCard(status.done, status.total)
+                        }
+                    }
                     items(
                         items = gridItems,
                         key = { it.key },
@@ -194,13 +205,11 @@ fun SearchScreen(vm: MainViewModel, onOpen: (Int) -> Unit, onOpenSettings: () ->
                         },
                     ) { item ->
                         when (item) {
-                            is GridItem.Header -> MonthHeader(item.label)
+                            is GridItem.Header -> MonthHeader(item.label, item.count)
                             is GridItem.Cell -> PhotoCell(
                                 photo = item.photo,
                                 selected = item.photo.id in selected,
-                                onClick = {
-                                    if (selectionMode) toggle(item.photo.id) else onOpen(item.photoIndex)
-                                },
+                                onClick = { if (selectionMode) toggle(item.photo.id) else onOpen(item.photoIndex) },
                                 onLongClick = { toggle(item.photo.id) },
                             )
                         }
@@ -236,105 +245,86 @@ fun SearchScreen(vm: MainViewModel, onOpen: (Int) -> Unit, onOpenSettings: () ->
     }
 }
 
-/** Selection action bar shown in place of the scope row while photos are selected. */
 @Composable
-private fun SelectionBar(
-    count: Int,
-    onClose: () -> Unit,
-    onShare: () -> Unit,
-    onCopy: () -> Unit,
-    onPath: (() -> Unit)?,
-    onIgnore: () -> Unit,
-) {
-    Row(
-        Modifier.fillMaxWidth().padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
+private fun WithTextPill(active: Boolean, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(50)
+    Surface(
+        onClick = onClick,
+        shape = shape,
+        color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerLowest,
+        contentColor = if (active) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+        border = if (active) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
     ) {
-        IconButton(onClick = onClose) {
-            Icon(Icons.Default.Close, contentDescription = stringResource(R.string.action_back))
-        }
-        Text("$count", style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.weight(1f))
-        IconButton(onClick = onShare) {
-            Icon(Icons.Default.Share, contentDescription = stringResource(R.string.action_share))
-        }
-        IconButton(onClick = onCopy) {
-            Icon(Icons.Default.ContentCopy, contentDescription = stringResource(R.string.action_copy_image))
-        }
-        if (onPath != null) {
-            IconButton(onClick = onPath) {
-                Icon(Icons.Default.Info, contentDescription = stringResource(R.string.action_show_path))
-            }
-        }
-        IconButton(onClick = onIgnore) {
-            Icon(Icons.Default.VisibilityOff, contentDescription = stringResource(R.string.action_ignore_photo))
+        Row(
+            Modifier.padding(horizontal = 11.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Icon(Icons.Default.TextFields, contentDescription = null, modifier = Modifier.size(14.dp))
+            Text(stringResource(R.string.filter_with_text), style = MaterialTheme.typography.labelMedium)
         }
     }
 }
 
-/** The scope row above the search field: "All Photos ▾" / "Albums ▾" / album name,
- *  with the "with text only" filter chip on the right. */
 @Composable
-private fun ScopeBar(
-    viewMode: ViewMode,
-    openAlbum: String?,
-    albumTitle: String,
-    onlyWithText: Boolean,
-    showFilter: Boolean,
-    onAllPhotos: () -> Unit,
-    onAlbums: () -> Unit,
-    onBackToAlbums: () -> Unit,
-    onToggleFilter: () -> Unit,
-) {
-    Row(
-        Modifier.fillMaxWidth().padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
+private fun SearchField(query: String, onChange: (String) -> Unit) {
+    BasicTextField(
+        value = query,
+        onValueChange = onChange,
+        singleLine = true,
+        textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
+        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(44.dp)
+            .clip(MaterialTheme.shapes.medium)
+            .background(MaterialTheme.colorScheme.surfaceContainerLowest)
+            .border(1.dp, MaterialTheme.colorScheme.outline, MaterialTheme.shapes.medium)
+            .padding(horizontal = 12.dp),
+        decorationBox = { inner ->
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                    if (query.isEmpty()) {
+                        Text(
+                            stringResource(R.string.search_placeholder),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    inner()
+                }
+            }
+        },
+    )
+}
+
+@Composable
+private fun IndexingCard(done: Int, total: Int) {
+    val progress = if (total > 0) done.toFloat() / total else 0f
+    Surface(
+        Modifier.fillMaxWidth().padding(bottom = 6.dp),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
     ) {
-        if (viewMode == ViewMode.ALBUMS && openAlbum != null) {
-            // Inside an album → breadcrumb back to the album list.
-            Row(
-                Modifier.clickable(onClick = onBackToAlbums).padding(vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
-                Text(albumTitle, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 6.dp))
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 9.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Default.TextFields, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
+                Text(
+                    stringResource(R.string.recognising_text),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+                Text("$done / $total", fontFamily = MonoFont, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
             }
-        } else {
-            var menu by remember { mutableStateOf(false) }
-            Box {
-                Row(
-                    Modifier.clickable(onClick = { menu = true }).padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        stringResource(if (viewMode == ViewMode.ALL) R.string.scope_all_photos else R.string.scope_albums),
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Icon(Icons.Default.ArrowDropDown, contentDescription = null)
-                }
-                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.scope_all_photos)) },
-                        onClick = { menu = false; onAllPhotos() },
-                    )
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.scope_albums)) },
-                        onClick = { menu = false; onAlbums() },
-                    )
-                }
-            }
-        }
-
-        Spacer(Modifier.weight(1f))
-
-        if (showFilter) {
-            FilterChip(
-                selected = onlyWithText,
-                onClick = onToggleFilter,
-                label = { Text(stringResource(R.string.filter_with_text)) },
-                leadingIcon = if (onlyWithText) {
-                    { Icon(Icons.Default.Check, contentDescription = null) }
-                } else null,
+            LinearProgressIndicator(
+                progress = { progress },
+                modifier = Modifier.fillMaxWidth().height(4.dp),
+                trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                gapSize = 0.dp,
+                drawStopIndicator = {},
             )
         }
     }
@@ -344,14 +334,15 @@ private fun ScopeBar(
 private fun AlbumGrid(albums: List<AlbumSummary>, unknownName: String, onOpen: (String) -> Unit) {
     if (albums.isEmpty()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text(stringResource(R.string.gallery_empty), style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(R.string.gallery_empty), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         return
     }
     LazyVerticalGrid(
-        columns = GridCells.Adaptive(minSize = 110.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        columns = GridCells.Fixed(2),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+        modifier = Modifier.padding(top = 2.dp),
     ) {
         items(albums, key = { it.bucketName ?: "" }) { album ->
             AlbumCell(album, unknownName) { onOpen(album.bucketName ?: "") }
@@ -368,18 +359,20 @@ private fun AlbumCell(album: AlbumSummary, unknownName: String, onOpen: () -> Un
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f)
-                .clip(RoundedCornerShape(8.dp)),
+                .clip(MaterialTheme.shapes.large),
             contentScale = ContentScale.Crop,
         )
         Text(
             album.bucketName ?: unknownName,
             style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 4.dp, start = 2.dp),
+            modifier = Modifier.padding(top = 6.dp, start = 2.dp),
         )
         Text(
             "${album.count}",
+            fontFamily = MonoFont,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 2.dp),
@@ -387,10 +380,47 @@ private fun AlbumCell(album: AlbumSummary, unknownName: String, onOpen: () -> Un
     }
 }
 
+@Composable
+private fun SelectionBar(
+    count: Int,
+    onClose: () -> Unit,
+    onShare: () -> Unit,
+    onCopy: (() -> Unit)?,
+    onPath: (() -> Unit)?,
+    onIgnore: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onClose) {
+            Icon(Icons.Default.Close, contentDescription = stringResource(R.string.action_back))
+        }
+        Text("$count", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.weight(1f))
+        IconButton(onClick = onShare) {
+            Icon(Icons.Default.Share, contentDescription = stringResource(R.string.action_share))
+        }
+        if (onCopy != null) {
+            IconButton(onClick = onCopy) {
+                Icon(Icons.Default.ContentCopy, contentDescription = stringResource(R.string.action_copy_image))
+            }
+        }
+        if (onPath != null) {
+            IconButton(onClick = onPath) {
+                Icon(Icons.Default.Info, contentDescription = stringResource(R.string.action_show_path))
+            }
+        }
+        IconButton(onClick = onIgnore) {
+            Icon(Icons.Default.VisibilityOff, contentDescription = stringResource(R.string.action_ignore_photo))
+        }
+    }
+}
+
 private sealed interface GridItem {
     val key: Any
 
-    data class Header(val label: String, val monthKey: String) : GridItem {
+    data class Header(val label: String, val monthKey: String, val count: Int) : GridItem {
         override val key get() = "h:$monthKey"
     }
 
@@ -399,18 +429,20 @@ private sealed interface GridItem {
     }
 }
 
-/** Flattens the date-sorted photos into [header, cells…] and a parallel list of
- *  the section label for each item index (used by the scrubber bubble). */
+/** Flattens date-sorted photos into [header, cells…] with a per-item section label. */
 private fun buildSections(photos: List<PhotoEntity>): Pair<List<GridItem>, List<String>> {
     val items = ArrayList<GridItem>(photos.size + 8)
     val labels = ArrayList<String>(photos.size + 8)
+    // Pre-count photos per month for the header count.
+    val counts = LinkedHashMap<String, Int>()
+    photos.forEach { counts[monthKey(it.dateTakenMs)] = (counts[monthKey(it.dateTakenMs)] ?: 0) + 1 }
     var lastKey: String? = null
     var curLabel = ""
     photos.forEachIndexed { i, p ->
         val key = monthKey(p.dateTakenMs)
         if (key != lastKey) {
             curLabel = monthYear(p.dateTakenMs)
-            items += GridItem.Header(curLabel, key)
+            items += GridItem.Header(curLabel, key, counts[key] ?: 0)
             labels += curLabel
             lastKey = key
         }
@@ -421,12 +453,14 @@ private fun buildSections(photos: List<PhotoEntity>): Pair<List<GridItem>, List<
 }
 
 @Composable
-private fun MonthHeader(label: String) {
-    Text(
-        label,
-        style = MaterialTheme.typography.titleMedium,
-        modifier = Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 6.dp, start = 2.dp),
-    )
+private fun MonthHeader(label: String, count: Int) {
+    Row(
+        Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 2.dp, start = 2.dp, end = 2.dp),
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        Text(label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+        Text("$count", fontFamily = MonoFont, fontSize = 11.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -435,7 +469,8 @@ private fun PhotoCell(photo: PhotoEntity, selected: Boolean, onClick: () -> Unit
     Box(
         Modifier
             .aspectRatio(1f)
-            .clip(RoundedCornerShape(8.dp))
+            .clip(MaterialTheme.shapes.extraSmall)
+            .background(MaterialTheme.colorScheme.surface)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) {
         AsyncImage(
@@ -444,6 +479,20 @@ private fun PhotoCell(photo: PhotoEntity, selected: Boolean, onClick: () -> Unit
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Crop,
         )
+        // Marker badge for photos that carry recognised text.
+        if (photo.ocrText != null) {
+            Box(
+                Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(5.dp)
+                    .size(20.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Color(0xCC0A0F0D)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Default.TextFields, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(12.dp))
+            }
+        }
         if (selected) {
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)))
             Icon(
@@ -459,7 +508,6 @@ private fun PhotoCell(photo: PhotoEntity, selected: Boolean, onClick: () -> Unit
 /**
  * Google-Photos-style fast-scroll rail: a thumb on the right that tracks scroll
  * position and, when dragged, jumps the grid and shows the month at that spot.
- * Only shown when the list is long enough to be worth scrubbing.
  */
 @Composable
 private fun DateScrubber(
@@ -506,7 +554,6 @@ private fun DateScrubber(
                 )
             },
     ) {
-        // Thumb: follows scroll when idle, follows the finger while dragging.
         val centerY = if (dragging) dragY else scrollFrac * heightPx
         val topY = (centerY - thumbHalfPx).coerceIn(0f, (heightPx - 2 * thumbHalfPx).coerceAtLeast(0f))
         Surface(
@@ -542,6 +589,7 @@ private fun DateScrubber(
 }
 
 private const val MIN_ITEMS_FOR_SCRUBBER = 30
+private val HEADER_HEIGHT = 52.dp
 
 private fun monthYear(ms: Long): String {
     val locale = Locale.getDefault()
@@ -549,6 +597,5 @@ private fun monthYear(ms: Long): String {
     return s.replaceFirstChar { if (it.isLowerCase()) it.titlecase(locale) else it.toString() }
 }
 
-/** Locale-independent grouping key, e.g. "2026-08". */
 private fun monthKey(ms: Long): String =
     SimpleDateFormat("yyyy-MM", Locale.US).format(Date(ms))

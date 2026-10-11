@@ -7,7 +7,8 @@
     <string name="indexing_progress">Indexing: %1$d of %2$d</string>
     <string name="gallery_empty">Gallery is empty or still indexing</string>
     <string name="no_results">Nothing found</string>
-    <string name="filter_with_text">With text only</string>
+    <string name="filter_with_text">With text</string>
+    <string name="recognising_text">Recognising text</string>
 
     <!-- Indexing notification -->
     <string name="notif_channel_indexing">Indexing</string>
@@ -46,6 +47,9 @@
     <string name="ocr_key_label">OCR.space API key</string>
     <string name="ocr_usage">Used today: %1$d / %2$d</string>
     <string name="ocr_usage_month">Used this month: %1$d / %2$d (estimate)</string>
+    <string name="ocr_usage_label">Used today</string>
+    <string name="ocr_usage_month_label">Used this month · estimate</string>
+    <string name="photos_in_gallery">photos in gallery</string>
     <string name="ocr_desc">Text is recognised by the OCR.space API. Get a free key at ocr.space — the free tier allows 500 photos per day. Larger photos are downscaled and compressed to under 1 MB before sending. When the daily limit is reached, indexing pauses and resumes automatically the next day.</string>
     <string name="action_show_key">Show key</string>
     <string name="action_hide_key">Hide key</string>
@@ -56,8 +60,9 @@
     <string name="albums_select_all">All albums</string>
     <string name="albums_count">%1$d photos</string>
     <string name="action_save">Save</string>
-    <string name="scope_all_photos">All Photos</string>
+    <string name="scope_all_photos">All photos</string>
     <string name="scope_albums">Albums</string>
+    <string name="nav_photos">Photos</string>
     <string name="album_unknown">Unknown</string>
     <string name="action_share">Share</string>
     <string name="action_more">More</string>

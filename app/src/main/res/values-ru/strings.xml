@@ -7,7 +7,8 @@
     <string name="indexing_progress">Индексация: %1$d из %2$d</string>
     <string name="gallery_empty">Галерея пуста или ещё индексируется</string>
     <string name="no_results">Ничего не найдено</string>
-    <string name="filter_with_text">Только с текстом</string>
+    <string name="filter_with_text">С текстом</string>
+    <string name="recognising_text">Распознаётся текст</string>
 
     <!-- Indexing notification -->
     <string name="notif_channel_indexing">Индексация</string>
@@ -46,6 +47,9 @@
     <string name="ocr_key_label">API-ключ OCR.space</string>
     <string name="ocr_usage">Использовано сегодня: %1$d / %2$d</string>
     <string name="ocr_usage_month">За месяц: %1$d / %2$d (оценка)</string>
+    <string name="ocr_usage_label">Сегодня</string>
+    <string name="ocr_usage_month_label">За месяц · оценка</string>
+    <string name="photos_in_gallery">фото в галерее</string>
     <string name="ocr_desc">Текст распознаётся через API OCR.space. Бесплатный ключ можно получить на ocr.space — бесплатный тариф даёт 500 фото в день. Большие фото уменьшаются и сжимаются до 1 МБ перед отправкой. При достижении дневного лимита индексация приостанавливается и автоматически продолжается на следующий день.</string>
     <string name="action_show_key">Показать ключ</string>
     <string name="action_hide_key">Скрыть ключ</string>
@@ -58,6 +62,7 @@
     <string name="action_save">Сохранить</string>
     <string name="scope_all_photos">Все фото</string>
     <string name="scope_albums">Альбомы</string>
+    <string name="nav_photos">Фото</string>
     <string name="album_unknown">Без альбома</string>
     <string name="action_share">Поделиться</string>
     <string name="action_more">Ещё</string>
